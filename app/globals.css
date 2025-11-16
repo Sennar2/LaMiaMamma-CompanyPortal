@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+.btn { @apply inline-flex items-center justify-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium shadow-sm; }
+.btn-primary { @apply border-blue-600 bg-blue-600 text-white hover:bg-blue-700; }
+.input, .select, .textarea { @apply rounded-md border px-3 py-2 text-sm; }
+.card { @apply rounded-2xl border bg-white p-4; }

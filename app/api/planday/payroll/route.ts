@@ -1,0 +1,257 @@
+import { NextResponse } from "next/server";
+import { LOCATIONS } from "@/data/locations";
+
+/** ---------- Config ---------- **/
+
+// Published CSV (each tab is a location, columns: SaleForecast, Payroll_App)
+const WEEK_FORECAST_CSV_BASE =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vSxZeFz50aJUNKILXl3GqdQW-_CCXO4-6aizsQbFMXjsL4q24iJV1zhWkEeT-wbjl4psDOT3mHdrO7U/pub?output=csv";
+
+// If Planday doesn’t give a payroll target %, fall back per-site here
+const PAYROLL_TARGET_FALLBACK: Record<string, number> = {
+  "La Mia Mamma - Chelsea": 35,
+  "La Mia Mamma - Hollywood Road": 34,
+  "La Mia Mamma - Notting Hill": 35,
+  "La Mia Mamma - Battersea": 34,
+  "Made in Italy - Chelsea": 35,
+  "Made in Italy - Battersea": 35,
+  "Fish and Bubbles - Fulham": 45,
+  "Fish and Bubbles - Notting Hill": 32,
+};
+
+/** ---------- Types ---------- **/
+type Body = {
+  departmentIds?: string[];
+  // pass any date in the target week (yyyy-mm-dd). If omitted, uses "today".
+  anchorYmd?: string;
+  locationName?: string; // for target/fallback & sheet tab selection
+};
+
+/** ---------- Helpers ---------- **/
+function startOfWeekMonday(ymd: string) {
+  const d = new Date(ymd + "T00:00:00");
+  const jsDay = d.getDay(); // 0=Sun..6=Sat
+  const delta = jsDay === 0 ? -6 : 1 - jsDay;
+  d.setDate(d.getDate() + delta);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+function addDays(ymd: string, days: number) {
+  const d = new Date(ymd + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+function weekRangeFromAnchor(ymd: string) {
+  const mon = startOfWeekMonday(ymd);
+  const sun = addDays(mon, 6);
+  return {
+    start: `${mon}T00:00:00Z`,
+    end: `${sun}T23:59:59.999Z`,
+  };
+}
+function pickFirstNumber(obj: any, ...keys: string[]): number | null {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v == null) continue;
+    const n = Number(v);
+    if (!Number.isNaN(n)) return n;
+  }
+  return null;
+}
+const NAME_BY_DEPT: Record<string, string> = (() => {
+  const pairs: Array<[string, string]> = [];
+  for (const loc of LOCATIONS as any[]) {
+    if (loc?.plandayDepartmentId != null) {
+      pairs.push([String(loc.plandayDepartmentId), String(loc.name)]);
+    }
+  }
+  return Object.fromEntries(pairs);
+})();
+function inferSingleLocationName(deptIds: string[]): string | null {
+  const names = new Set<string>();
+  for (const id of deptIds) {
+    const n = NAME_BY_DEPT[String(id)];
+    if (n) names.add(n);
+  }
+  if (names.size === 1) return Array.from(names)[0];
+  return null;
+}
+
+// tiny CSV parser (enough for our sheet)
+function parseCSV(text: string): string[][] {
+  const lines = text.trim().split(/\r?\n/);
+  return lines.map((ln) => {
+    const out: string[] = [];
+    let cur = "";
+    let inQ = false;
+    for (let i = 0; i < ln.length; i++) {
+      const ch = ln[i];
+      if (ch === '"' && ln[i + 1] === '"') {
+        cur += '"'; i++;
+      } else if (ch === '"') {
+        inQ = !inQ;
+      } else if (ch === "," && !inQ) {
+        out.push(cur);
+        cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out.map((s) => s.trim());
+  });
+}
+
+async function readWeeklyForecastFromSheet(tabName: string): Promise<{ salesForecast?: number; payrollForecastGBP?: number }> {
+  try {
+    const url = `${WEEK_FORECAST_CSV_BASE}&sheet=${encodeURIComponent(tabName)}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return {};
+    const text = await resp.text();
+    const rows = parseCSV(text);
+    if (rows.length < 2) return {};
+
+    const header = rows[0].map((h) => h.toLowerCase());
+    const saleIdx = header.findIndex((h) => h.includes("saleforecast"));
+    const payrollIdx = header.findIndex((h) => h.includes("payroll_app"));
+
+    if (saleIdx === -1 && payrollIdx === -1) return {};
+
+    // Heuristic: pick the last row with numeric values (finance tends to append/update weekly)
+    for (let i = rows.length - 1; i >= 1; i--) {
+      const r = rows[i];
+      const sale = saleIdx >= 0 ? Number(String(r[saleIdx] || "").replace(/[,£]/g, "")) : NaN;
+      const payr = payrollIdx >= 0 ? Number(String(r[payrollIdx] || "").replace(/[,£]/g, "")) : NaN;
+      const hasSale = Number.isFinite(sale) && sale > 0;
+      const hasPayr = Number.isFinite(payr) && payr > 0;
+      if (hasSale || hasPayr) {
+        return {
+          salesForecast: hasSale ? Math.round(sale) : undefined,
+          payrollForecastGBP: hasPayr ? Math.round(payr) : undefined,
+        };
+      }
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+/** ---------- Handler ---------- **/
+export async function POST(req: Request) {
+  try {
+    const body: Body = await req.json();
+    const { departmentIds, anchorYmd, locationName } = body || {};
+    if (!departmentIds?.length) {
+      return NextResponse.json({ error: "departmentIds required" }, { status: 400 });
+    }
+
+    const ymd = anchorYmd || new Date().toISOString().slice(0, 10);
+    const { start, end } = weekRangeFromAnchor(ymd);
+    const origin = new URL(req.url).origin;
+
+    // 1) Labour/wages (scheduled) for the week
+    let wagesGBP = 0;
+    try {
+      const labourResp = await fetch(`${origin}/api/planday/labour`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ departmentIds, start, end }),
+      });
+      if (labourResp.ok) {
+        const j = await labourResp.json();
+        wagesGBP = Number(j?.weekLabourScheduled ?? 0);
+      }
+    } catch {}
+
+    // 2) Sales actual + budget/forecast + (maybe) payroll target from your revenue route
+    let salesActual = 0;
+    let salesForecast = 0;
+    let plandayTargetPct: number | null = null;
+
+    try {
+      const revResp = await fetch(`${origin}/api/planday/revenue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ departmentIds, date: ymd }),
+      });
+      if (revResp.ok) {
+        const j = await revResp.json();
+        salesActual = Number(j?.weekActual ?? 0);
+        salesForecast =
+          pickFirstNumber(j, "weekBudget", "weekForecast") ?? 0;
+
+        const possibleTarget = pickFirstNumber(
+          j,
+          "payrollTargetPct",
+          "labourBudgetPct",
+          "weekPayrollTargetPct",
+          "labourTargetPct"
+        );
+        if (possibleTarget != null) plandayTargetPct = possibleTarget;
+      }
+    } catch {}
+
+    // 3) If a week forecast is missing/zero, pull from the published sheet (tab = location)
+    const resolvedLocation =
+      locationName || inferSingleLocationName(departmentIds) || undefined;
+
+    if (resolvedLocation && (!salesForecast || salesForecast === 0)) {
+      const f = await readWeeklyForecastFromSheet(resolvedLocation);
+      if (f.salesForecast != null) salesForecast = f.salesForecast;
+      // (We also accept Payroll_App if you want to show a forecasted payroll £ somewhere)
+    }
+
+    // 4) Target % resolution: Planday > site fallback
+    let targetPct: number | null = null;
+    let targetSource: "planday" | "fallback" | "none" = "none";
+    if (plandayTargetPct != null) {
+      targetPct = plandayTargetPct;
+      targetSource = "planday";
+    } else if (resolvedLocation && PAYROLL_TARGET_FALLBACK[resolvedLocation] != null) {
+      targetPct = PAYROLL_TARGET_FALLBACK[resolvedLocation];
+      targetSource = "fallback";
+    }
+
+    // 5) Derived
+    const payrollPctActual = salesActual > 0 ? (wagesGBP / salesActual) * 100 : null;
+    const payrollPctForecast = salesForecast > 0 ? (wagesGBP / salesForecast) * 100 : null;
+
+    const variancePct =
+      payrollPctActual != null && targetPct != null
+        ? Number((payrollPctActual - targetPct).toFixed(2))
+        : null;
+
+    const varianceGBP =
+      variancePct != null && salesActual > 0
+        ? Math.round((variancePct / 100) * salesActual)
+        : null;
+
+    return NextResponse.json({
+      scope: { start, end, anchorYmd: ymd, locationResolved: resolvedLocation },
+      totals: {
+        wagesGBP: Number(wagesGBP.toFixed(2)),
+        salesActual: Math.round(salesActual),
+        salesForecast: Math.round(salesForecast),
+        payrollPctActual: payrollPctActual != null ? Number(payrollPctActual.toFixed(2)) : null,
+        payrollPctForecast: payrollPctForecast != null ? Number(payrollPctForecast.toFixed(2)) : null,
+        targetPct,
+        variancePct,
+        varianceGBP,
+      },
+      sources: {
+        wages: "planday:labour(scheduled, week)",
+        sales: "planday:revenue (week) + sheet fallback if blank",
+        target: targetSource,
+        forecastsSheet: resolvedLocation ? `sheet tab = ${resolvedLocation}` : "n/a",
+      },
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Failed" }, { status: 500 });
+  }
+}
