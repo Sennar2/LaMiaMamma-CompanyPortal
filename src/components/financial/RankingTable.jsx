@@ -7,6 +7,8 @@ export default function RankingTable({
   payrollTarget,
   foodTarget,
   drinkTarget,
+  title = "Site Ranking (last week)",
+  subtitle = "Sorted by highest Payroll %",
 }) {
   if (!rankingData || rankingData.length === 0) return null;
 
@@ -57,7 +59,7 @@ export default function RankingTable({
               lineHeight: 1.3,
             }}
           >
-            Site Ranking (last week)
+            {title}
           </h2>
           <div
             style={{
@@ -66,7 +68,7 @@ export default function RankingTable({
               lineHeight: 1.3,
             }}
           >
-            Sorted by highest Payroll %
+            {subtitle}
           </div>
         </div>
 
@@ -175,14 +177,8 @@ export default function RankingTable({
                   row.payrollPct,
                   payrollTarget
                 );
-                const foodStyle = colorFor(
-                  row.foodPct,
-                  foodTarget
-                );
-                const drinkStyle = colorFor(
-                  row.drinkPct,
-                  drinkTarget
-                );
+                const foodStyle = colorFor(row.foodPct, foodTarget);
+                const drinkStyle = colorFor(row.drinkPct, drinkTarget);
                 const salesStyle = colorFor(row.salesVar, 0, true); // ≥0 is good
 
                 return (
