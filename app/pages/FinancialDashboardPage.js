@@ -1,166 +1,221 @@
-"use client";
+'use client';
 
-import React, { useEffect, useState, useMemo } from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
-import { CSVLink } from "react-csv";
+import React, { useEffect, useMemo, useState } from 'react';
+import { CSVLink } from 'react-csv';
+import { supabase } from '../../src/lib/supabaseClient';
 
-// IMPORTANT: adjust this import path if your supabase client lives somewhere else.
-// I’m assuming you already have `src/supabaseClient.js` in the portal.
-import { supabase } from "../../supabaseClient";
+// Financial UI components (already in your repo)
+import InsightsBar from '../../src/components/financial/InsightsBar';
+import ComplianceBar from '../../src/components/financial/ComplianceBar';
+import KPIBlock from '../../src/components/financial/KPIBlock';
+import RankingTable from '../../src/components/financial/RankingTable';
+import ChartSection from '../../src/components/financial/ChartSection';
 
-import FinancialHeader from "../../components/financial/FinancialHeader";
-import FinancialFooter from "../../components/financial/FinancialFooter";
-import InsightsBar from "../../components/financial/InsightsBar";
-import ComplianceBar from "../../components/financial/ComplianceBar";
-import RankingTable from "../../components/financial/RankingTable";
-import KPIBlock from "../../components/financial/KPIBlock";
-import ChartSection from "../../components/financial/ChartSection";
+// ─────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────
 
-// ---------------------
-// CONFIG / CONSTANTS
-// ---------------------
-
-// use your env vars if you have them, fallback to current values
 const API_KEY =
   process.env.NEXT_PUBLIC_GOOGLE_API_KEY ||
-  "AIzaSyB_dkFpvk6w_d9dPD_mWVhfB8-lly-9FS8";
+  'AIzaSyB_dkFpvk6w_d9dPD_mWVhfB8-lly-9FS8';
 
 const SPREADSHEET_ID =
   process.env.NEXT_PUBLIC_SHEET_ID ||
-  "1PPVSEcZ6qLOEK2Z0uRLgXCnS_maazWFO_yMY648Oq1g";
+  '1PPVSEcZ6qLOEK2Z0uRLgXCnS_maazWFO_yMY648Oq1g';
 
-// virtual/brand rollups
-const BRAND_GROUPS = {
-  "La Mia Mamma (Brand)": [
-    "La Mia Mamma - Chelsea",
-    "La Mia Mamma - Hollywood Road",
-    "La Mia Mamma - Notting Hill",
-    "La Mia Mamma - Battersea",
+const BRAND_GROUPS: Record<string, string[]> = {
+  'La Mia Mamma (Brand)': [
+    'La Mia Mamma - Chelsea',
+    'La Mia Mamma - Hollywood Road',
+    'La Mia Mamma - Notting Hill',
+    'La Mia Mamma - Battersea',
   ],
-  "Fish and Bubbles (Brand)": [
-    "Fish and Bubbles - Fulham",
-    "Fish and Bubbles - Notting Hill",
+  'Fish and Bubbles (Brand)': [
+    'Fish and Bubbles - Fulham',
+    'Fish and Bubbles - Notting Hill',
   ],
-  "Made in Italy (Brand)": [
-    "Made in Italy - Chelsea",
-    "Made in Italy - Battersea",
+  'Made in Italy (Brand)': [
+    'Made in Italy - Chelsea',
+    'Made in Italy - Battersea',
   ],
 };
 
-// physical stores for ranking table
 const STORE_LOCATIONS = [
-  "La Mia Mamma - Chelsea",
-  "La Mia Mamma - Hollywood Road",
-  "La Mia Mamma - Notting Hill",
-  "La Mia Mamma - Battersea",
-  "Fish and Bubbles - Fulham",
-  "Fish and Bubbles - Notting Hill",
-  "Made in Italy - Chelsea",
-  "Made in Italy - Battersea",
+  'La Mia Mamma - Chelsea',
+  'La Mia Mamma - Hollywood Road',
+  'La Mia Mamma - Notting Hill',
+  'La Mia Mamma - Battersea',
+  'Fish and Bubbles - Fulham',
+  'Fish and Bubbles - Notting Hill',
+  'Made in Italy - Chelsea',
+  'Made in Italy - Battersea',
 ];
 
-const PERIODS = ["Week", "Period", "Quarter"];
-const TABS = ["Sales", "Payroll", "Food", "Drink"];
+const PERIODS = ['Week', 'Period', 'Quarter'];
+const TABS = ['Sales', 'Payroll', 'Food', 'Drink'] as const;
 
-// Targets (your real ones)
+// Targets
 const PAYROLL_TARGET = 35; // %
 const FOOD_TARGET = 12.5; // %
 const DRINK_TARGET = 5.5; // %
 
-// ---------------------
-// HELPER FUNCTIONS
-// ---------------------
-
-function formatCurrency(val) {
-  if (val === undefined || val === null || isNaN(val)) return "-";
-  return "£" + Number(val).toLocaleString();
+// ─────────────────────────────────────────────────────────────
+// Small helpers
+// ─────────────────────────────────────────────────────────────
+function parseWeekNum(weekStr: string | number | undefined) {
+  const num = parseInt(String(weekStr ?? '').replace(/[^\d]/g, ''), 10);
+  return Number.isNaN(num) ? 0 : num;
 }
 
-function parseWeekNum(weekStr) {
-  const num = parseInt(String(weekStr || "").replace(/[^\d]/g, ""), 10);
-  return isNaN(num) ? 0 : num;
+function formatCurrency(val: number | undefined | null) {
+  if (val == null || Number.isNaN(val)) return '£0';
+  return '£' + Number(val).toLocaleString();
 }
 
-// roll up multi-site rows by Week for brand views
-function rollupBy(rows, bucketKey) {
-  if (!rows.length) return [];
+function getISOWeek(date = new Date()) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return Math.min(52, weekNo);
+}
 
-  const grouped = rows.reduce((acc, row) => {
-    const key = String(row[bucketKey]).trim();
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(row);
-    return acc;
-  }, {});
+function getCurrentWeekLabel() {
+  return `W${getISOWeek()}`;
+}
 
-  const numericKeys = Object.keys(rows[0]).filter(
-    (k) => typeof rows[0][k] === "number"
+function rowHasData(r: any) {
+  return Boolean(
+    (r?.Sales_Actual && r.Sales_Actual !== 0) ||
+      (r?.Payroll_Actual && r.Payroll_Actual !== 0) ||
+      (r?.Sales_Budget && r.Sales_Budget !== 0)
   );
+}
 
-  const combined = Object.entries(grouped).map(([label, groupRows]) => {
-    const totals = {};
-    numericKeys.forEach((nk) => {
-      totals[nk] = groupRows.reduce((sum, r) => sum + (r[nk] || 0), 0);
-    });
-    return {
-      ...totals,
-      [bucketKey]: label,
-    };
-  });
+// Google Sheets: parse values
+function parseSheetValues(values: any[][] | undefined): any[] {
+  if (!values || values.length < 2) return [];
+  const [headers, ...rows] = values;
+  return rows.map((row) =>
+    headers.reduce((obj: Record<string, any>, key: string, idx: number) => {
+      let value = row[idx];
+      if (key === 'LocationBreakdown' && typeof value === 'string') {
+        try {
+          value = JSON.parse(value);
+        } catch {
+          value = {};
+        }
+      } else if (!isNaN(value)) {
+        value = Number(value);
+      }
+      obj[key] = value;
+      return obj;
+    }, {})
+  );
+}
 
-  if (bucketKey === "Week") {
-    combined.sort((a, b) => parseWeekNum(a.Week) - parseWeekNum(b.Week));
+async function fetchTab(tabName: string) {
+  const range = `${tabName}!A1:Z100`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(
+    range
+  )}?key=${API_KEY}`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} loading "${tabName}"`);
+  const json = await res.json();
+  return parseSheetValues(json.values);
+}
+
+// Merge multiple site rows by Week, summing numeric columns
+function rollupByWeek(rowsArray: any[]) {
+  if (!rowsArray.length) return [];
+  const grouped: Record<string, any[]> = {};
+
+  for (const row of rowsArray) {
+    const w = String(row.Week || '').trim();
+    if (!grouped[w]) grouped[w] = [];
+    grouped[w].push(row);
   }
 
-  return combined;
+  const numericKeys = Object.keys(rowsArray[0]).filter(
+    (k) => typeof rowsArray[0][k] === 'number'
+  );
+
+  const merged = Object.entries(grouped).map(([weekLabel, rows]) => {
+    const totals: Record<string, number> = {};
+    numericKeys.forEach((col) => {
+      totals[col] = rows.reduce((sum, r) => sum + (r[col] || 0), 0);
+    });
+    return { Week: weekLabel, ...totals };
+  });
+
+  merged.sort((a: any, b: any) => parseWeekNum(a.Week) - parseWeekNum(b.Week));
+  return merged;
 }
 
-// build insights for the most recent full week in the dataset
-function computeLatestWeekInsights(mergedRows) {
-  if (!mergedRows || mergedRows.length === 0) return null;
+/**
+ * computeInsightsBundle
+ * - Uses "last completed week" snapshot: current ISO week - 1
+ * - If exact row missing, falls back to latest <= snapshot with data
+ * - 4-week avg for Payroll_v% includes +/- correctly
+ */
+function computeInsightsBundle(rows: any[]) {
+  if (!rows || rows.length === 0) return null;
 
-  const sorted = [...mergedRows].sort(
-    (a, b) => parseWeekNum(a.Week) - parseWeekNum(b.Week)
-  );
-  const latest = sorted[sorted.length - 1];
+  const decorated = rows.map((r: any) => ({
+    ...r,
+    __weekNum: parseWeekNum(r.Week),
+  }));
+
+  const currentWeekNum = getISOWeek(); // e.g. 44
+  const snapshotWeekNum = currentWeekNum - 1 <= 0 ? currentWeekNum : currentWeekNum - 1;
+
+  let latest = decorated.find((r) => r.__weekNum === snapshotWeekNum && rowHasData(r));
+  if (!latest) {
+    const candidates = decorated
+      .filter((r) => r.__weekNum <= snapshotWeekNum && rowHasData(r))
+      .sort((a, b) => a.__weekNum - b.__weekNum);
+    latest = candidates[candidates.length - 1];
+  }
+  if (!latest) {
+    const cands = decorated.filter(rowHasData).sort((a, b) => a.__weekNum - b.__weekNum);
+    latest = cands[cands.length - 1];
+  }
   if (!latest) return null;
 
-  const wkLabel = latest.Week;
+  const wkNum = latest.__weekNum;
+  const wkLabel = latest.Week || `W${wkNum}`;
+
+  // last-4-weeks window
+  const windowWeeks = [wkNum, wkNum - 1, wkNum - 2, wkNum - 3].filter((n) => n > 0);
+  const last4Rows = decorated.filter((r) => windowWeeks.includes(r.__weekNum));
+
+  const parsePayrollVar = (val: any): number => {
+    if (val === undefined || val === null) return 0;
+    const cleaned = String(val).replace('%', '').trim();
+    const num = parseFloat(cleaned);
+    return Number.isNaN(num) ? 0 : num;
+  };
+  const payrollTrendVals = last4Rows.map((row) => parsePayrollVar(row['Payroll_v%']));
+  const avgPayrollVar4w =
+    payrollTrendVals.length > 0
+      ? payrollTrendVals.reduce((s, n) => s + n, 0) / payrollTrendVals.length
+      : 0;
 
   const salesActual = latest.Sales_Actual || 0;
   const salesBudget = latest.Sales_Budget || 0;
   const salesLastYear = latest.Sales_LastYear || 0;
 
   const salesVar = salesActual - salesBudget;
-  const salesVarPct =
-    salesBudget !== 0 ? (salesVar / salesBudget) * 100 : 0;
+  const salesVarPct = salesBudget !== 0 ? (salesVar / salesBudget) * 100 : 0;
 
-  const payrollPct =
-    salesActual !== 0
-      ? (latest.Payroll_Actual / salesActual) * 100
-      : 0;
-
-  const foodPct =
-    salesActual !== 0
-      ? (latest.Food_Actual / salesActual) * 100
-      : 0;
-
-  const drinkPct =
-    salesActual !== 0
-      ? (latest.Drink_Actual / salesActual) * 100
-      : 0;
+  const payrollPct = salesActual !== 0 ? (latest.Payroll_Actual / salesActual) * 100 : 0;
+  const foodPct = salesActual !== 0 ? (latest.Food_Actual / salesActual) * 100 : 0;
+  const drinkPct = salesActual !== 0 ? (latest.Drink_Actual / salesActual) * 100 : 0;
 
   const salesVsLastYearPct =
-    salesLastYear !== 0
-      ? ((salesActual - salesLastYear) / salesLastYear) * 100
-      : 0;
+    salesLastYear !== 0 ? ((salesActual - salesLastYear) / salesLastYear) * 100 : 0;
 
   return {
     wkLabel,
@@ -172,285 +227,166 @@ function computeLatestWeekInsights(mergedRows) {
     foodPct,
     drinkPct,
     salesVsLastYearPct,
+    avgPayrollVar4w,
+    currentWeekLabel: getCurrentWeekLabel(),
   };
 }
 
-// ISO week number (Mon start), capped to 52
-function getISOWeek(date = new Date()) {
-  const d = new Date(
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
-  );
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-  return weekNo > 52 ? 52 : weekNo;
-}
-function getCurrentWeekLabel() {
-  return `W${getISOWeek(new Date())}`;
-}
-
-// compute which locations this user is allowed to see
-function computeAllowedLocationsForProfile(profile) {
-  if (!profile) return [];
-  const roleLower = (profile.role || "").toLowerCase();
-  const home = profile.home_location;
-
-  // Admin / Operation -> full access to all
-  if (roleLower === "admin" || roleLower === "operation") {
-    return [
-      "GroupOverview",
-      "La Mia Mamma (Brand)",
-      "Fish and Bubbles (Brand)",
-      "Made in Italy (Brand)",
-      "La Mia Mamma - Chelsea",
-      "La Mia Mamma - Hollywood Road",
-      "La Mia Mamma - Notting Hill",
-      "La Mia Mamma - Battersea",
-      "Fish and Bubbles - Fulham",
-      "Fish and Bubbles - Notting Hill",
-      "Made in Italy - Chelsea",
-      "Made in Italy - Battersea",
-    ];
+// Week → Period/Quarter map (W1..W52)
+const WEEK_TO_PERIOD_QUARTER = Array.from({ length: 52 }, (_, i) => {
+  const w = i + 1;
+  let period: string, quarter: string;
+  if (w <= 13) {
+    quarter = 'Q1';
+    period = w <= 4 ? 'P1' : w <= 8 ? 'P2' : 'P3';
+  } else if (w <= 26) {
+    quarter = 'Q2';
+    period = w <= 17 ? 'P4' : w <= 21 ? 'P5' : 'P6';
+  } else if (w <= 39) {
+    quarter = 'Q3';
+    period = w <= 30 ? 'P7' : w <= 34 ? 'P8' : 'P9';
+  } else {
+    quarter = 'Q4';
+    period = w <= 43 ? 'P10' : w <= 47 ? 'P11' : 'P12';
   }
+  return { week: `W${w}`, period, quarter };
+});
 
-  // Manager -> just their site
-  if (roleLower === "manager") {
-    return [home];
-  }
+// ─────────────────────────────────────────────────────────────
+// Page
+// ─────────────────────────────────────────────────────────────
 
-  // Team members / others -> nothing
-  return [];
-}
-
-// ---------------------
-// PAGE COMPONENT
-// ---------------------
-
-export default function FinancialDashboardPage() {
-  // --- 1. AUTH / PROFILE ---
-  const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null);
+export default function FinancialPage() {
+  // 1) Auth / profile
+  const [session, setSession] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // allowed location logic
-  const [allowedLocations, setAllowedLocations] = useState([]);
-  const [initialLocation, setInitialLocation] = useState("");
-
-  // pull Supabase session + listen for changes
   useEffect(() => {
-    let sub;
-    async function init() {
+    let sub: any;
+    (async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       setSession(session);
 
-      const { data: listener } = supabase.auth.onAuthStateChange(
-        (_event, newSession) => {
-          setSession(newSession);
-          if (!newSession) {
-            setProfile(null);
-            setAllowedLocations([]);
-            setInitialLocation("");
-          }
-        }
-      );
+      const { data: listener } = supabase.auth.onAuthStateChange((_ev, newSession) => {
+        setSession(newSession);
+      });
       sub = listener;
-    }
-    init();
+    })();
 
     return () => {
       if (sub) sub.subscription.unsubscribe();
     };
   }, []);
 
-  // once we have a session, load the profile row from Supabase
   useEffect(() => {
-    async function loadProfile() {
+    (async () => {
       if (!session) {
         setAuthLoading(false);
         return;
       }
-
       setAuthLoading(true);
-
       const { data, error } = await supabase
-        .from("profiles")
-        .select("full_name, role, home_location")
-        .eq("id", session.user.id)
+        .from('profiles')
+        .select('full_name, role, home_location')
+        .eq('id', session.user.id)
         .single();
 
       if (error) {
-        console.error("profile load error", error);
         setProfile(null);
-        setAllowedLocations([]);
-        setInitialLocation("");
-        setAuthLoading(false);
-        return;
+      } else {
+        setProfile(data);
       }
-
-      // set profile
-      setProfile(data);
-
-      // compute allowedLocations + default location
-      const locs = computeAllowedLocationsForProfile(data);
-      setAllowedLocations(locs);
-      setInitialLocation(locs[0] || "");
-
       setAuthLoading(false);
-    }
-
-    loadProfile();
+    })();
   }, [session]);
 
-  // role checks
-  const roleLower = (profile?.role || "").toLowerCase();
-  const canViewFinance =
-    roleLower === "admin" ||
-    roleLower === "operation" ||
-    roleLower === "manager";
+  // 2) Permission
+  const role = (profile?.role || '').toLowerCase();
+  const canView = ['admin', 'operation', 'ops', 'manager'].includes(role);
 
-  // sign out button
-  async function handleSignOut() {
-    await supabase.auth.signOut();
-  }
+  // 3) Locations the user can view
+  const [allowedLocations, setAllowedLocations] = useState<string[]>([]);
+  useEffect(() => {
+    if (!profile) return;
+    if (['admin', 'operation', 'ops'].includes(role)) {
+      setAllowedLocations([
+        'GroupOverview',
+        'La Mia Mamma (Brand)',
+        'Fish and Bubbles (Brand)',
+        'Made in Italy (Brand)',
+        ...STORE_LOCATIONS,
+      ]);
+    } else if (role === 'manager' && profile.home_location) {
+      setAllowedLocations([profile.home_location]);
+    } else {
+      setAllowedLocations([]);
+    }
+  }, [profile, role]);
 
-  // --- 2. DASHBOARD STATE ---
-  const [location, setLocation] = useState("");
-  const [rawRows, setRawRows] = useState([]);
-  const [activeTab, setActiveTab] = useState("Sales");
-  const [period, setPeriod] = useState("Week");
+  // 4) UI state
+  const [location, setLocation] = useState<string>('');
+  const [period, setPeriod] = useState<string>('Week');
+  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>('Sales');
+
+  useEffect(() => {
+    if (!location && allowedLocations.length) {
+      setLocation(allowedLocations[0]);
+    }
+  }, [allowedLocations, location]);
+
+  // 5) Load data
+  const [rawRows, setRawRows] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(false);
-  const [fetchError, setFetchError] = useState("");
-  const [rankingData, setRankingData] = useState([]);
+  const [fetchError, setFetchError] = useState('');
 
-  const [currentWeekNow] = useState(getCurrentWeekLabel());
-
-  // when initialLocation is ready (after profile load), set default once
   useEffect(() => {
-    if (!location && initialLocation) {
-      setLocation(initialLocation);
-    }
-  }, [initialLocation, location]);
-
-  // map Week -> Period / Quarter for 52 weeks
-  const WEEK_TO_PERIOD_QUARTER = useMemo(() => {
-    return Array.from({ length: 52 }, (_, i) => {
-      const w = i + 1;
-      let periodVal;
-      let quarter;
-      if (w <= 13) {
-        quarter = "Q1";
-        periodVal = w <= 4 ? "P1" : w <= 8 ? "P2" : "P3";
-      } else if (w <= 26) {
-        quarter = "Q2";
-        periodVal = w <= 17 ? "P4" : w <= 21 ? "P5" : "P6";
-      } else if (w <= 39) {
-        quarter = "Q3";
-        periodVal = w <= 30 ? "P7" : w <= 34 ? "P8" : "P9";
-      } else {
-        quarter = "Q4";
-        periodVal = w <= 43 ? "P10" : w <= 47 ? "P11" : "P12";
-      }
-      return { week: `W${w}`, period: periodVal, quarter };
-    });
-  }, []);
-
-  // turn Google Sheets "values" -> array of row objects
-  function parseSheetValues(values) {
-    if (!values || values.length < 2) return [];
-    const [headers, ...rows] = values;
-
-    return rows.map((row) =>
-      headers.reduce((obj, key, idx) => {
-        let value = row[idx];
-
-        if (key === "LocationBreakdown" && typeof value === "string") {
-          try {
-            value = JSON.parse(value);
-          } catch {
-            value = {};
-          }
-        } else if (!isNaN(value)) {
-          value = Number(value);
-        }
-
-        obj[key] = value;
-        return obj;
-      }, {})
-    );
-  }
-
-  // fetch one sheet tab
-  async function fetchTab(tabName) {
-    const range = `${tabName}!A1:Z100`;
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(
-      range
-    )}?key=${API_KEY}`;
-
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} loading "${tabName}"`);
-    }
-    const json = await res.json();
-    return parseSheetValues(json.values);
-  }
-
-  // load data for current dropdown location
-  useEffect(() => {
-    async function load() {
+    (async () => {
       if (!location) return;
       try {
         setLoadingData(true);
-        setFetchError("");
+        setFetchError('');
 
-        const isBrand = BRAND_GROUPS[location];
-        let rows;
+        const isBrand = Boolean(BRAND_GROUPS[location]);
+        let rows: any[] = [];
+
         if (isBrand) {
-          // brand view: merge all its sites by Week
-          const allData = await Promise.all(
-            BRAND_GROUPS[location].map((site) => fetchTab(site))
-          );
-          rows = rollupBy(allData.flat(), "Week");
+          const all = await Promise.all(BRAND_GROUPS[location].map((site) => fetchTab(site)));
+          rows = rollupByWeek(all.flat());
         } else {
-          // single site or "GroupOverview"
           rows = await fetchTab(location);
+          rows.sort((a, b) => parseWeekNum(a.Week) - parseWeekNum(b.Week));
         }
 
         setRawRows(rows);
-      } catch (err) {
-        console.error(err);
-        setFetchError(
-          err instanceof Error ? err.message : "Unknown error loading data"
-        );
+      } catch (err: any) {
         setRawRows([]);
+        setFetchError(err?.message || 'Failed to load data');
       } finally {
         setLoadingData(false);
       }
-    }
-
-    load();
+    })();
   }, [location]);
 
-  // decorate rows with Period + Quarter labels
+  // 6) Merge Week → Period/Quarter
   const mergedRows = useMemo(() => {
     return rawRows.map((item) => {
-      const w = String(item.Week || "").trim(); // "W44"
+      const w = String(item.Week || '').trim();
       const match = WEEK_TO_PERIOD_QUARTER.find((x) => x.week === w);
       return {
         ...item,
-        Period: match?.period || "P?",
-        Quarter: match?.quarter || "Q?",
+        Period: match?.period || 'P?',
+        Quarter: match?.quarter || 'Q?',
       };
     });
-  }, [rawRows, WEEK_TO_PERIOD_QUARTER]);
+  }, [rawRows]);
 
-  // aggregate by Period or Quarter if needed
-  function groupMergedRowsBy(bucketKey) {
+  // 7) Group by Period/Quarter if needed
+  function groupMergedRowsBy(bucketKey: 'Period' | 'Quarter'): any[] {
     if (!mergedRows.length) return [];
-
-    const grouped = mergedRows.reduce((acc, row) => {
+    const grouped = mergedRows.reduce<Record<string, any[]>>((acc, row) => {
       const key = row[bucketKey];
       if (!acc[key]) acc[key] = [];
       acc[key].push(row);
@@ -458,16 +394,16 @@ export default function FinancialDashboardPage() {
     }, {});
 
     const numericKeys = Object.keys(mergedRows[0]).filter(
-      (k) => typeof mergedRows[0][k] === "number"
+      (k) => typeof mergedRows[0][k] === 'number'
     );
 
     return Object.entries(grouped).map(([label, rows]) => {
-      const sums = {};
+      const sums: Record<string, number> = {};
       numericKeys.forEach((col) => {
-        sums[col] = rows.reduce((total, r) => total + (r[col] || 0), 0);
+        sums[col] = (rows as any[]).reduce((total, r) => total + (r[col] || 0), 0);
       });
       return {
-        Week: label, // this will be "P3" or "Q2", shown on chart
+        Week: label, // keep consistent shape for charts/XAxis
         ...sums,
       };
     });
@@ -475,57 +411,62 @@ export default function FinancialDashboardPage() {
 
   const filteredData = useMemo(() => {
     if (!mergedRows.length) return [];
-    if (period === "Week") return mergedRows;
-    if (period === "Period") return groupMergedRowsBy("Period");
-    return groupMergedRowsBy("Quarter");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (period === 'Week') return mergedRows;
+    if (period === 'Period') return groupMergedRowsBy('Period');
+    return groupMergedRowsBy('Quarter');
   }, [mergedRows, period]);
 
-  // compute the "last week" metrics block
-  const insights = useMemo(
-    () => computeLatestWeekInsights(mergedRows),
-    [mergedRows]
-  );
+  // 8) Insights + Compliance snapshot (based on last completed week)
+  const insights = useMemo(() => computeInsightsBundle(mergedRows), [mergedRows]);
+  const currentWeekNow = getCurrentWeekLabel();
 
-  // build rankingData for admin/operation only
+  // 9) Ranking (admins / ops only) — pick each location’s last completed week with data
+  const [rankingData, setRankingData] = useState<any[]>([]);
   useEffect(() => {
-    async function buildRanking() {
-      if (roleLower !== "admin" && roleLower !== "operation") {
+    (async () => {
+      if (!['admin', 'operation', 'ops'].includes(role)) {
         setRankingData([]);
         return;
       }
-
       try {
         const result = await Promise.all(
           STORE_LOCATIONS.map(async (loc) => {
             const rows = await fetchTab(loc);
-            if (!rows || rows.length === 0) return null;
+            if (!rows?.length) return null;
 
-            const sorted = [...rows].sort(
-              (a, b) => parseWeekNum(a.Week) - parseWeekNum(b.Week)
+            const decorated = rows
+              .map((r: any) => ({ ...r, __weekNum: parseWeekNum(r.Week) }))
+              .sort((a: any, b: any) => a.__weekNum - b.__weekNum);
+
+            const currentWeekNum = getISOWeek();
+            const snapshotWeekNum =
+              currentWeekNum - 1 <= 0 ? currentWeekNum : currentWeekNum - 1;
+
+            let latest = decorated.find(
+              (r: any) => r.__weekNum === snapshotWeekNum && rowHasData(r)
             );
-            const latest = sorted[sorted.length - 1];
+            if (!latest) {
+              const candidates = decorated
+                .filter((r: any) => r.__weekNum <= snapshotWeekNum && rowHasData(r))
+                .sort((a: any, b: any) => a.__weekNum - b.__weekNum);
+              latest = candidates[candidates.length - 1];
+            }
+            if (!latest) {
+              const cands = decorated
+                .filter(rowHasData)
+                .sort((a: any, b: any) => a.__weekNum - b.__weekNum);
+              latest = cands[cands.length - 1];
+            }
             if (!latest) return null;
 
             const salesActual = latest.Sales_Actual || 0;
             const salesBudget = latest.Sales_Budget || 0;
 
-            const payrollPct =
-              salesActual !== 0
-                ? (latest.Payroll_Actual / salesActual) * 100
-                : 0;
+            const payrollPct = salesActual ? (latest.Payroll_Actual / salesActual) * 100 : 0;
+            const foodPct = salesActual ? (latest.Food_Actual / salesActual) * 100 : 0;
+            const drinkPct = salesActual ? (latest.Drink_Actual / salesActual) * 100 : 0;
 
-            const foodPct =
-              salesActual !== 0
-                ? (latest.Food_Actual / salesActual) * 100
-                : 0;
-
-            const drinkPct =
-              salesActual !== 0
-                ? (latest.Drink_Actual / salesActual) * 100
-                : 0;
-
-            const salesVar = salesActual - salesBudget; // £ above/below budget
+            const salesVar = salesActual - salesBudget;
 
             return {
               location: loc,
@@ -538,130 +479,123 @@ export default function FinancialDashboardPage() {
           })
         );
 
-        const cleaned = result.filter(Boolean);
-
-        // sort worst -> best by payroll %
+        const cleaned = result.filter(Boolean) as any[];
         cleaned.sort((a, b) => b.payrollPct - a.payrollPct);
-
         setRankingData(cleaned);
-      } catch (err) {
-        console.error("Ranking build failed:", err);
+      } catch {
         setRankingData([]);
       }
-    }
+    })();
+  }, [role]);
 
-    buildRanking();
-  }, [roleLower]);
-
-  // chart line config
+  // 10) Chart config (preserves Theo lines)
   const chartConfig = {
     Sales: [
-      { key: "Sales_Actual", color: "#4ade80", name: "Actual" },
-      { key: "Sales_Budget", color: "#60a5fa", name: "Budget" },
-      { key: "Sales_LastYear", color: "#fbbf24", name: "Last Year" },
+      { key: 'Sales_Actual', color: '#4ade80', name: 'Actual' },
+      { key: 'Sales_Budget', color: '#60a5fa', name: 'Budget' },
+      { key: 'Sales_LastYear', color: '#fbbf24', name: 'Last Year' },
     ],
     Payroll: [
-      { key: "Payroll_Actual", color: "#4ade80", name: "Actual" },
-      { key: "Payroll_Budget", color: "#60a5fa", name: "Budget" },
-      { key: "Payroll_Theo", color: "#a78bfa", name: "Theo" },
+      { key: 'Payroll_Actual', color: '#4ade80', name: 'Actual' },
+      { key: 'Payroll_Budget', color: '#60a5fa', name: 'Budget' },
+      { key: 'Payroll_Theo', color: '#a78bfa', name: 'Theo' },
     ],
     Food: [
-      { key: "Food_Actual", color: "#4ade80", name: "Actual" },
-      { key: "Food_Budget", color: "#60a5fa", name: "Budget" },
-      { key: "Food_Theo", color: "#a78bfa", name: "Theo" },
+      { key: 'Food_Actual', color: '#4ade80', name: 'Actual' },
+      { key: 'Food_Budget', color: '#60a5fa', name: 'Budget' },
+      { key: 'Food_Theo', color: '#a78bfa', name: 'Theo' },
     ],
     Drink: [
-      { key: "Drink_Actual", color: "#4ade80", name: "Actual" },
-      { key: "Drink_Budget", color: "#60a5fa", name: "Budget" },
-      { key: "Drink_Theo", color: "#a78bfa", name: "Theo" },
+      { key: 'Drink_Actual', color: '#4ade80', name: 'Actual' },
+      { key: 'Drink_Budget', color: '#60a5fa', name: 'Budget' },
+      { key: 'Drink_Theo', color: '#a78bfa', name: 'Theo' },
     ],
   };
 
-  // £ axis label
-  const yTickFormatter = (val) => {
-    if (val === 0) return "£0";
-    if (!val) return "";
-    return "£" + Number(val).toLocaleString();
-  };
-
-  // tooltip values
-  const tooltipFormatter = (value, name) => {
-    return [formatCurrency(value), name];
-  };
-
-  // ---- RENDER GUARDS ----
-
+  // ─────────────────────────────────────────────────────────────
+  // Guards
+  // ─────────────────────────────────────────────────────────────
   if (authLoading) {
     return (
-      <div style={centerBox}>
-        <div style={mutedText}>Loading profile…</div>
-      </div>
+      <main className="max-w-7xl mx-auto px-4 py-10 text-center text-sm text-gray-500">
+        Loading profile…
+      </main>
     );
   }
-
   if (!session || !profile) {
     return (
-      <div style={centerBox}>
-        <div style={denyBox}>
+      <main className="max-w-7xl mx-auto px-4 py-10 text-center">
+        <div className="inline-block rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           You are not signed in.
         </div>
-      </div>
+      </main>
     );
   }
-
-  if (!canViewFinance) {
-    // team members / disallowed roles
+  if (!canView) {
     return (
-      <div style={centerBox}>
-        <div style={denyBox}>
+      <main className="max-w-7xl mx-auto px-4 py-10 text-center">
+        <div className="inline-block rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-700">
           You don&apos;t have permission to view Financial Performance.
         </div>
-      </div>
+      </main>
     );
   }
 
-  // allowedLocations might still be empty (should not happen for
-  // admin/operation/manager if profile is set, but safety):
-  if (!allowedLocations.length || !initialLocation) {
-    return (
-      <div style={centerBox}>
-        <div style={denyBox}>
-          No location access configured for this account.
+  // ─────────────────────────────────────────────────────────────
+  // UI
+  // ─────────────────────────────────────────────────────────────
+  return (
+    <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+      {/* Title */}
+      <div className="text-center">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+          Financial Performance 2025
+        </h1>
+      </div>
+
+      {/* Controls Row (centered, own line) */}
+      <div className="flex flex-col md:flex-row items-center justify-center gap-3 md:gap-4">
+        {/* Location */}
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-700">Location</label>
+          <select
+            className="border rounded-md px-3 py-2 text-sm bg-white"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+          >
+            {allowedLocations.map((loc) => (
+              <option key={loc} value={loc}>
+                {loc}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Period */}
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-700">Period</label>
+          <select
+            className="border rounded-md px-3 py-2 text-sm bg-white"
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+          >
+            {PERIODS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
-    );
-  }
 
-  // ---- MAIN PAGE ----
-  return (
-    <div
-      style={{
-        backgroundColor: "#f9fafb",
-        minHeight: "100vh",
-        fontFamily: "Inter, system-ui, sans-serif",
-        color: "#111827",
-      }}
-    >
-      {/* Top header with logo, user, dropdowns */}
-      <FinancialHeader
-        profile={profile}
-        onSignOut={handleSignOut}
-        allowedLocations={allowedLocations}
-        location={location}
-        setLocation={setLocation}
-        period={period}
-        setPeriod={setPeriod}
-        PERIODS={PERIODS}
-      />
-
-      {/* Insights: current week + last week summary for the selected location */}
+      {/* HERO INSIGHTS (Current Week + Last Week Results) */}
       <InsightsBar
         insights={insights}
-        currentWeekNow={currentWeekNow}
         payrollTarget={PAYROLL_TARGET}
+        currentWeekNow={currentWeekNow}
       />
 
-      {/* Compliance vs targets with ✅ / ❌ */}
+      {/* Compliance */}
       <ComplianceBar
         insights={insights}
         payrollTarget={PAYROLL_TARGET}
@@ -669,44 +603,14 @@ export default function FinancialDashboardPage() {
         drinkTarget={DRINK_TARGET}
       />
 
-      {/* Admin / Operation only: ranking all stores last week */}
-      {(roleLower === "admin" || roleLower === "operation") &&
-        rankingData.length > 0 && (
-          <RankingTable
-            rankingData={rankingData}
-            payrollTarget={PAYROLL_TARGET}
-            foodTarget={FOOD_TARGET}
-            drinkTarget={DRINK_TARGET}
-          />
-        )}
-
-      {/* Loading / error state for selected location data */}
-      {loadingData && (
-        <p
-          style={{
-            textAlign: "center",
-            marginTop: "1rem",
-            color: "#6b7280",
-          }}
-        >
-          Loading data…
-        </p>
-      )}
-      {!loadingData && fetchError && (
-        <p
-          style={{
-            textAlign: "center",
-            marginTop: "1rem",
-            color: "#dc2626",
-            fontWeight: 500,
-          }}
-        >
+      {/* KPI cards */}
+      {loadingData ? (
+        <p className="text-center text-sm text-gray-500">Loading data…</p>
+      ) : fetchError ? (
+        <p className="text-center text-sm text-red-600">
           Could not load data: {fetchError}
         </p>
-      )}
-
-      {/* KPI cards */}
-      {!loadingData && !fetchError && (
+      ) : (
         <KPIBlock
           data={filteredData}
           payrollTarget={PAYROLL_TARGET}
@@ -715,88 +619,48 @@ export default function FinancialDashboardPage() {
         />
       )}
 
-      {/* Metric tabs */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          flexWrap: "wrap",
-          marginTop: "1.5rem",
-          marginBottom: "1rem",
-          gap: "0.5rem",
-        }}
-      >
+      {/* Tabs */}
+      <div className="flex flex-wrap items-center justify-center gap-2 -mt-2">
         {TABS.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`tab-button ${activeTab === tab ? "active" : ""}`}
-            style={{
-              backgroundColor:
-                activeTab === tab ? "#111827" : "#fff",
-              color: activeTab === tab ? "#fff" : "#111827",
-              border: "1px solid #d1d5db",
-              borderRadius: "0.5rem",
-              padding: "0.5rem 0.75rem",
-              fontSize: "0.8rem",
-              fontWeight: 500,
-              lineHeight: 1.2,
-              cursor: "pointer",
-              boxShadow:
-                activeTab === tab
-                  ? "0 12px 24px rgba(0,0,0,0.4)"
-                  : "0 8px 16px rgba(0,0,0,0.05)",
-            }}
+            className={`px-3 py-2 rounded-md text-sm border ${
+              activeTab === tab
+                ? 'bg-gray-900 text-white shadow'
+                : 'bg-white text-gray-900 hover:bg-gray-50'
+            }`}
           >
             {tab}
           </button>
         ))}
       </div>
 
-      {/* Chart */}
+      {/* CHARTS */}
       {!loadingData && !fetchError && (
         <ChartSection
           activeTab={activeTab}
           filteredData={filteredData}
           chartConfig={chartConfig}
-          yTickFormatter={yTickFormatter}
-          tooltipFormatter={tooltipFormatter}
           CSVLink={CSVLink}
         />
       )}
 
-      <FinancialFooter />
-    </div>
+      {/* Space before ranking */}
+      <div className="h-4 md:h-6" />
+
+      {/* RANKING */}
+      {['admin', 'operation', 'ops'].includes(role) && rankingData.length > 0 && (
+        <RankingTable
+          rankingData={rankingData}
+          payrollTarget={PAYROLL_TARGET}
+          foodTarget={FOOD_TARGET}
+          drinkTarget={DRINK_TARGET}
+        />
+      )}
+
+      {/* extra bottom space so it doesn't crush the global footer */}
+      <div className="h-10" />
+    </main>
   );
 }
-
-// little inline style helpers for fallback states
-const centerBox = {
-  minHeight: "80vh",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontFamily: "Inter, system-ui, sans-serif",
-};
-
-const denyBox = {
-  backgroundColor: "#fff",
-  border: "1px solid #e5e7eb",
-  borderRadius: "0.75rem",
-  padding: "1rem 1.25rem",
-  maxWidth: "320px",
-  textAlign: "center",
-  color: "#dc2626",
-  fontWeight: 500,
-  fontSize: "0.9rem",
-  lineHeight: 1.4,
-  boxShadow:
-    "0 24px 40px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04)",
-};
-
-const mutedText = {
-  color: "#6b7280",
-  fontSize: "0.9rem",
-  lineHeight: 1.4,
-  fontWeight: 500,
-};
