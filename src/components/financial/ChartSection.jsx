@@ -11,28 +11,20 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-type ChartSectionProps = {
-  activeTab: string;
-  filteredData: any[];
-  chartConfig: Record<string, { key: string; color: string; name: string }[]>;
-  CSVLink: any;
-};
-
 export default function ChartSection({
   activeTab,
   filteredData,
   chartConfig,
   CSVLink,
-}: ChartSectionProps) {
+}) {
   const lines = chartConfig[activeTab] || [];
 
-  // local toggle state: "currency" (£) or "percent" (%)
-  const [unit, setUnit] = React.useState<"currency" | "percent">("currency");
+  // "currency" (£) or "percent" (%)
+  const [unit, setUnit] = React.useState("currency");
 
-  // --- FORMAT HELPERS -------------------------------------------------
+  // ----------------- FORMAT HELPERS -----------------
 
-  // Format as currency
-  const formatCurrency = (value: any) => {
+  const formatCurrency = (value) => {
     if (value == null || isNaN(Number(value))) return "";
     return (
       "£" +
@@ -43,29 +35,28 @@ export default function ChartSection({
     );
   };
 
-  // Format as percent
-  const formatPercent = (value: any) => {
+  const formatPercent = (value) => {
     if (value == null || isNaN(Number(value))) return "";
 
     // If your values are already 0–100:
     const pct = Number(value);
 
-    // If your values are 0–1 instead, use this instead:
+    // If they are 0–1, use instead:
     // const pct = Number(value) * 100;
 
-    return `${pct.toFixed(1)}%`;
+    return pct.toFixed(1) + "%";
   };
 
-  const yTickFormatter = (value: any) =>
+  const yTickFormatter = (value) =>
     unit === "currency" ? formatCurrency(value) : formatPercent(value);
 
-  const tooltipFormatter = (value: any, name: string) => {
+  const tooltipFormatter = (value, name) => {
     const formatted =
       unit === "currency" ? formatCurrency(value) : formatPercent(value);
-    return [formatted, name] as [string, string];
+    return [formatted, name];
   };
 
-  // --------------------------------------------------------------------
+  // --------------------------------------------------
 
   return (
     <div
@@ -113,7 +104,7 @@ export default function ChartSection({
             {activeTab}: Actual vs Budget
           </h2>
 
-          {/* Unit toggle */}
+          {/* £ / % toggle */}
           <div
             style={{
               display: "inline-flex",
