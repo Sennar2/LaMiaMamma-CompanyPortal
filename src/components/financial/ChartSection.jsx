@@ -15,8 +15,6 @@ export default function ChartSection({
   activeTab,
   filteredData,
   chartConfig,
-  yTickFormatter,
-  tooltipFormatter,
   CSVLink,
 }) {
   const lines = chartConfig[activeTab] || [];
@@ -42,28 +40,23 @@ export default function ChartSection({
   const formatPercent = (value) => {
     if (value == null || isNaN(value)) return "";
 
-    // CASE 1 – if your values are already 0–100, keep as-is:
+    // If your values are already 0–100:
     const pct = Number(value);
 
-    // CASE 2 – if your values are 0–1 (0.12 = 12%), use this instead:
+    // If your values are 0–1 instead, use this line instead of the one above:
     // const pct = Number(value) * 100;
 
     return `${pct.toFixed(1)}%`;
   };
 
-  const internalYTickFormatter = (value) =>
+  const yTickFormatter = (value) =>
     unit === "currency" ? formatCurrency(value) : formatPercent(value);
 
-  const internalTooltipFormatter = (value, name) => {
+  const tooltipFormatter = (value, name) => {
     const formatted =
       unit === "currency" ? formatCurrency(value) : formatPercent(value);
     return [formatted, name]; // [value, label]
   };
-
-  // Respect any formatter passed from parent; otherwise use our internal logic
-  const effectiveYTickFormatter = yTickFormatter || internalYTickFormatter;
-  const effectiveTooltipFormatter =
-    tooltipFormatter || internalTooltipFormatter;
 
   // --------------------------------------------------------------------
 
@@ -195,8 +188,8 @@ export default function ChartSection({
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={filteredData}>
             <XAxis dataKey="Week" />
-            <YAxis tickFormatter={effectiveYTickFormatter} />
-            <Tooltip formatter={effectiveTooltipFormatter} />
+            <YAxis tickFormatter={yTickFormatter} />
+            <Tooltip formatter={tooltipFormatter} />
             <Legend />
             {lines.map((line) => (
               <Line
