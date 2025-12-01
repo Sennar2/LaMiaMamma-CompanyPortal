@@ -11,22 +11,29 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+type ChartSectionProps = {
+  activeTab: string;
+  filteredData: any[];
+  chartConfig: Record<string, { key: string; color: string; name: string }[]>;
+  CSVLink: any;
+};
+
 export default function ChartSection({
   activeTab,
   filteredData,
   chartConfig,
   CSVLink,
-}) {
+}: ChartSectionProps) {
   const lines = chartConfig[activeTab] || [];
 
   // local toggle state: "currency" (£) or "percent" (%)
-  const [unit, setUnit] = React.useState("currency");
+  const [unit, setUnit] = React.useState<"currency" | "percent">("currency");
 
   // --- FORMAT HELPERS -------------------------------------------------
 
   // Format as currency
-  const formatCurrency = (value) => {
-    if (value == null || isNaN(value)) return "";
+  const formatCurrency = (value: any) => {
+    if (value == null || isNaN(Number(value))) return "";
     return (
       "£" +
       Number(value).toLocaleString("en-GB", {
@@ -37,25 +44,25 @@ export default function ChartSection({
   };
 
   // Format as percent
-  const formatPercent = (value) => {
-    if (value == null || isNaN(value)) return "";
+  const formatPercent = (value: any) => {
+    if (value == null || isNaN(Number(value))) return "";
 
     // If your values are already 0–100:
     const pct = Number(value);
 
-    // If your values are 0–1 instead, use this line instead of the one above:
+    // If your values are 0–1 instead, use this instead:
     // const pct = Number(value) * 100;
 
     return `${pct.toFixed(1)}%`;
   };
 
-  const yTickFormatter = (value) =>
+  const yTickFormatter = (value: any) =>
     unit === "currency" ? formatCurrency(value) : formatPercent(value);
 
-  const tooltipFormatter = (value, name) => {
+  const tooltipFormatter = (value: any, name: string) => {
     const formatted =
       unit === "currency" ? formatCurrency(value) : formatPercent(value);
-    return [formatted, name]; // [value, label]
+    return [formatted, name] as [string, string];
   };
 
   // --------------------------------------------------------------------
