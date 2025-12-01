@@ -21,6 +21,52 @@ export default function ChartSection({
 }) {
   const lines = chartConfig[activeTab] || [];
 
+  // local toggle state: "currency" (£) or "percent" (%)
+  const [unit, setUnit] = React.useState("currency");
+
+  // --- FORMAT HELPERS -------------------------------------------------
+
+  // Format as currency
+  const formatCurrency = (value) => {
+    if (value == null || isNaN(value)) return "";
+    return (
+      "£" +
+      Number(value).toLocaleString("en-GB", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      })
+    );
+  };
+
+  // Format as percent
+  const formatPercent = (value) => {
+    if (value == null || isNaN(value)) return "";
+
+    // CASE 1 – if your values are already 0–100, keep as-is:
+    const pct = Number(value);
+
+    // CASE 2 – if your values are 0–1 (0.12 = 12%), use this instead:
+    // const pct = Number(value) * 100;
+
+    return `${pct.toFixed(1)}%`;
+  };
+
+  const internalYTickFormatter = (value) =>
+    unit === "currency" ? formatCurrency(value) : formatPercent(value);
+
+  const internalTooltipFormatter = (value, name) => {
+    const formatted =
+      unit === "currency" ? formatCurrency(value) : formatPercent(value);
+    return [formatted, name]; // [value, label]
+  };
+
+  // Respect any formatter passed from parent; otherwise use our internal logic
+  const effectiveYTickFormatter = yTickFormatter || internalYTickFormatter;
+  const effectiveTooltipFormatter =
+    tooltipFormatter || internalTooltipFormatter;
+
+  // --------------------------------------------------------------------
+
   return (
     <div
       style={{
@@ -45,19 +91,86 @@ export default function ChartSection({
           alignItems: "center",
           marginBottom: "1rem",
           rowGap: "0.75rem",
+          columnGap: "0.75rem",
         }}
       >
-        <h2
+        <div
           style={{
-            margin: 0,
-            fontSize: "1rem",
-            fontWeight: 600,
-            color: "#111827",
-            lineHeight: 1.3,
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
           }}
         >
-          {activeTab}: Actual vs Budget
-        </h2>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: "1rem",
+              fontWeight: 600,
+              color: "#111827",
+              lineHeight: 1.3,
+            }}
+          >
+            {activeTab}: Actual vs Budget
+          </h2>
+
+          {/* Unit toggle */}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.3rem",
+              padding: "0.15rem",
+              borderRadius: "999px",
+              border: "1px solid rgba(0,0,0,0.08)",
+              backgroundColor: "#f9fafb",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setUnit("currency")}
+              style={{
+                padding: "0.25rem 0.6rem",
+                borderRadius: "999px",
+                border: "none",
+                fontSize: "0.75rem",
+                fontWeight: 500,
+                cursor: "pointer",
+                backgroundColor:
+                  unit === "currency" ? "#111827" : "transparent",
+                color: unit === "currency" ? "#fff" : "#4b5563",
+                boxShadow:
+                  unit === "currency"
+                    ? "0 6px 12px rgba(0,0,0,0.25)"
+                    : "none",
+                transition: "all 0.15s ease",
+              }}
+            >
+              £
+            </button>
+            <button
+              type="button"
+              onClick={() => setUnit("percent")}
+              style={{
+                padding: "0.25rem 0.6rem",
+                borderRadius: "999px",
+                border: "none",
+                fontSize: "0.75rem",
+                fontWeight: 500,
+                cursor: "pointer",
+                backgroundColor:
+                  unit === "percent" ? "#111827" : "transparent",
+                color: unit === "percent" ? "#fff" : "#4b5563",
+                boxShadow:
+                  unit === "percent"
+                    ? "0 6px 12px rgba(0,0,0,0.25)"
+                    : "none",
+                transition: "all 0.15s ease",
+              }}
+            >
+              %
+            </button>
+          </div>
+        </div>
 
         <CSVLink
           data={filteredData}
@@ -82,8 +195,8 @@ export default function ChartSection({
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={filteredData}>
             <XAxis dataKey="Week" />
-            <YAxis tickFormatter={yTickFormatter} />
-            <Tooltip formatter={tooltipFormatter} />
+            <YAxis tickFormatter={effectiveYTickFormatter} />
+            <Tooltip formatter={effectiveTooltipFormatter} />
             <Legend />
             {lines.map((line) => (
               <Line
