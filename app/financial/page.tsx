@@ -6,13 +6,14 @@ import { CSVLink } from "react-csv";
 // IMPORTANT: adjust this import path if your supabase client lives somewhere else.
 import { supabase } from "../../supabaseClient";
 
-import FinancialHeader from "../../components/financial/FinancialHeader";
-import FinancialFooter from "../../components/financial/FinancialFooter";
-import InsightsBar from "../../components/financial/InsightsBar";
-import ComplianceBar from "../../components/financial/ComplianceBar";
-import RankingTable from "../../components/financial/RankingTable";
-import KPIBlock from "../../components/financial/KPIBlock";
-import ChartSection from "../../components/financial/ChartSection";
+
+import FinancialHeader from "../../src/components/financial/FinancialHeader";
+import FinancialFooter from "../../src/components/financial/FinancialFooter";
+import InsightsBar from "../../src/components/financial/InsightsBar";
+import ComplianceBar from "../../src/components/financial/ComplianceBar";
+import RankingTable from "../../src/components/financial/RankingTable";
+import KPIBlock from "../../src/components/financial/KPIBlock";
+import ChartSection from "../../src/components/financial/ChartSection";
 
 // ---------------------
 // CONFIG / CONSTANTS
