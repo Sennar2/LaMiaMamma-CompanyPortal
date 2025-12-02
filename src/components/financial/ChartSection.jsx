@@ -17,7 +17,6 @@ export default function ChartSection({
   chartConfig,
   CSVLink,
 }) {
-  // base line config coming from the parent
   const baseLines = chartConfig[activeTab] || [];
 
   // "currency" (£) or "percent" (%)
@@ -47,13 +46,14 @@ export default function ChartSection({
 
   /**
    * Build a copy of filteredData where:
-   * - Sales (percent mode):
-   *    Sales_vsBudgetPct    = (Actual - Budget) / Budget * 100
-   *    Sales_vsLastYearPct  = (Actual - LastYear) / LastYear * 100
    *
-   * - Payroll / Food / Drink (percent mode):
-   *    Actual, Budget = value / Theo * 100
-   *    Theo           = 100
+   * Sales (percent mode):
+   *   Sales_vsBudgetPct   = (Actual - Budget) / Budget * 100
+   *   Sales_vsLastYearPct = (Actual - LastYear) / LastYear * 100
+   *
+   * Payroll / Food / Drink (percent mode):
+   *   <Metric>_vsTheoPct  = (Actual - Theo) / Theo * 100
+   *   (positive = overspend; negative = saving)
    */
   const toPercentData = (rows, tab) => {
     return rows.map((row) => {
@@ -69,47 +69,21 @@ export default function ChartSection({
 
         out.Sales_vsLastYearPct =
           lastYear > 0 ? ((actual - lastYear) / lastYear) * 100 : 0;
-
-        // We leave Sales_Actual / Sales_Budget / Sales_LastYear
-        // untouched here; we just don't use them in % mode.
       } else if (tab === "Payroll") {
+        const actual = safeNum(row.Payroll_Actual);
         const theo = safeNum(row.Payroll_Theo);
-        if (theo > 0) {
-          out.Payroll_Actual =
-            (safeNum(row.Payroll_Actual) / theo) * 100;
-          out.Payroll_Budget =
-            (safeNum(row.Payroll_Budget) / theo) * 100;
-          out.Payroll_Theo = 100;
-        } else {
-          out.Payroll_Actual = 0;
-          out.Payroll_Budget = 0;
-          out.Payroll_Theo = 0;
-        }
+        out.Payroll_vsTheoPct =
+          theo > 0 ? ((actual - theo) / theo) * 100 : 0;
       } else if (tab === "Food") {
+        const actual = safeNum(row.Food_Actual);
         const theo = safeNum(row.Food_Theo);
-        if (theo > 0) {
-          out.Food_Actual = (safeNum(row.Food_Actual) / theo) * 100;
-          out.Food_Budget =
-            (safeNum(row.Food_Budget) / theo) * 100;
-          out.Food_Theo = 100;
-        } else {
-          out.Food_Actual = 0;
-          out.Food_Budget = 0;
-          out.Food_Theo = 0;
-        }
+        out.Food_vsTheoPct =
+          theo > 0 ? ((actual - theo) / theo) * 100 : 0;
       } else if (tab === "Drink") {
+        const actual = safeNum(row.Drink_Actual);
         const theo = safeNum(row.Drink_Theo);
-        if (theo > 0) {
-          out.Drink_Actual =
-            (safeNum(row.Drink_Actual) / theo) * 100;
-          out.Drink_Budget =
-            (safeNum(row.Drink_Budget) / theo) * 100;
-          out.Drink_Theo = 100;
-        } else {
-          out.Drink_Actual = 0;
-          out.Drink_Budget = 0;
-          out.Drink_Theo = 0;
-        }
+        out.Drink_vsTheoPct =
+          theo > 0 ? ((actual - theo) / theo) * 100 : 0;
       }
 
       return out;
@@ -122,7 +96,7 @@ export default function ChartSection({
       ? filteredData
       : toPercentData(filteredData, activeTab);
 
-  // In % mode for Sales we use special lines based on the diff fields
+  // Choose which lines to render in % mode
   let lines;
   if (unit === "percent" && activeTab === "Sales") {
     const salesActualLine =
@@ -147,8 +121,47 @@ export default function ChartSection({
         name: "Actual vs Last Year",
       },
     ];
+  } else if (unit === "percent" && activeTab === "Payroll") {
+    const actualLine =
+      baseLines.find((l) => l.key === "Payroll_Actual") ||
+      baseLines[0] ||
+      { color: "#4ade80" };
+
+    lines = [
+      {
+        key: "Payroll_vsTheoPct",
+        color: actualLine.color,
+        name: "Actual vs Theo",
+      },
+    ];
+  } else if (unit === "percent" && activeTab === "Food") {
+    const actualLine =
+      baseLines.find((l) => l.key === "Food_Actual") ||
+      baseLines[0] ||
+      { color: "#4ade80" };
+
+    lines = [
+      {
+        key: "Food_vsTheoPct",
+        color: actualLine.color,
+        name: "Actual vs Theo",
+      },
+    ];
+  } else if (unit === "percent" && activeTab === "Drink") {
+    const actualLine =
+      baseLines.find((l) => l.key === "Drink_Actual") ||
+      baseLines[0] ||
+      { color: "#4ade80" };
+
+    lines = [
+      {
+        key: "Drink_vsTheoPct",
+        color: actualLine.color,
+        name: "Actual vs Theo",
+      },
+    ];
   } else {
-    // default: reuse parent config (Sales in £, Payroll/Food/Drink in £ or % vs Theo)
+    // £ mode: use original lines (Actual, Budget, Theo, Last Year)
     lines = baseLines;
   }
 
