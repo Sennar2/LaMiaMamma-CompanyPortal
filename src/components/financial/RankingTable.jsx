@@ -84,7 +84,7 @@ export default function RankingTable({
             </div>
           </div>
 
-          {/* toggle sits inside the card now */}
+          {/* Toggle inside the card */}
           <div
             style={{
               display: "inline-flex",
@@ -189,7 +189,7 @@ export default function RankingTable({
                       color: "#9ca3af",
                     }}
                   >
-                    {' '}
+                    {" "}
                     (≤ {payrollTarget}%)
                   </span>
                 </th>
@@ -207,7 +207,7 @@ export default function RankingTable({
                       color: "#9ca3af",
                     }}
                   >
-                    {' '}
+                    {" "}
                     (≤ {foodTarget}%)
                   </span>
                 </th>
@@ -225,7 +225,7 @@ export default function RankingTable({
                       color: "#9ca3af",
                     }}
                   >
-                    {' '}
+                    {" "}
                     (≤ {drinkTarget}%)
                   </span>
                 </th>
@@ -276,7 +276,7 @@ export default function RankingTable({
                           lineHeight: 1.3,
                         }}
                       >
-                        {row.week || '-'}
+                        {row.week || "-"}
                       </div>
                     </td>
 
@@ -321,7 +321,7 @@ export default function RankingTable({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {row.salesVar >= 0 ? '+' : ''}
+                      {row.salesVar >= 0 ? "+" : ""}
                       £{Math.round(row.salesVar).toLocaleString()}
                     </td>
                   </tr>
