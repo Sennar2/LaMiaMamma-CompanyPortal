@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { CSVLink } from 'react-csv';
 import { supabase } from '../../src/lib/supabaseClient';
-import React, { useEffect, useMemo, useState, useRef } from 'react';
 
 
 // Financial UI components (already in your repo)
