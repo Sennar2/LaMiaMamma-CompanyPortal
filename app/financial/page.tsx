@@ -415,7 +415,7 @@ export default function FinancialPage() {
   const insights = useMemo(() => computeInsightsBundle(mergedRows), [mergedRows]);
   const currentWeekNow = getCurrentWeekLabel();
 
-  // 9) Ranking — week + period
+  // 9) Ranking (admins / ops only) — last completed week + last completed period
   const [rankingWeekData, setRankingWeekData] = useState<any[]>([]);
   const [rankingPeriodData, setRankingPeriodData] = useState<any[]>([]);
   const [rankingView, setRankingView] = useState<'week' | 'period'>('week');
@@ -454,7 +454,7 @@ export default function FinancialPage() {
 
           if (!decorated.length) continue;
 
-          // ----- Last completed week (same logic as before) -----
+          // ----- LAST COMPLETED WEEK (same logic as before) -----
           let latest = decorated.find(
             (r: any) => r.__weekNum === snapshotWeekNum && rowHasData(r)
           );
@@ -475,22 +475,25 @@ export default function FinancialPage() {
           const salesActual = latest.Sales_Actual || 0;
           const salesBudget = latest.Sales_Budget || 0;
 
-          const payrollPct = salesActual ? (latest.Payroll_Actual / salesActual) * 100 : 0;
-          const foodPct = salesActual ? (latest.Food_Actual / salesActual) * 100 : 0;
-          const drinkPct = salesActual ? (latest.Drink_Actual / salesActual) * 100 : 0;
+          const payrollPct =
+            salesActual !== 0 ? (latest.Payroll_Actual / salesActual) * 100 : 0;
+          const foodPct =
+            salesActual !== 0 ? (latest.Food_Actual / salesActual) * 100 : 0;
+          const drinkPct =
+            salesActual !== 0 ? (latest.Drink_Actual / salesActual) * 100 : 0;
 
           const salesVar = salesActual - salesBudget;
 
           weekResults.push({
             location: loc,
-            week: latest.Week,
+            week: latest.Week, // e.g. "W31"
             payrollPct,
             foodPct,
             drinkPct,
             salesVar,
           });
 
-          // ----- Last completed period (aggregate up to snapshot week) -----
+          // ----- LAST COMPLETED PERIOD (aggregate up to snapshot week) -----
           const withPeriod = decorated.map((r: any) => {
             const wLabel = String(r.Week || '').trim();
             const match = WEEK_TO_PERIOD_QUARTER.find((x) => x.week === wLabel);
@@ -569,7 +572,7 @@ export default function FinancialPage() {
 
           periodResults.push({
             location: loc,
-            week: lastPeriodKey, // e.g. "P3"
+            week: lastPeriodKey, // "P3", "P12", etc
             payrollPct: payrollPctPeriod,
             foodPct: foodPctPeriod,
             drinkPct: drinkPctPeriod,
@@ -588,6 +591,7 @@ export default function FinancialPage() {
       }
     })();
   }, [role]);
+
 
   // 10) Chart config (preserves Theo lines)
   const chartConfig = {
@@ -747,7 +751,7 @@ export default function FinancialPage() {
         />
       )}
 
-      {/* Space before ranking */}
+      {/* Space before ing */}
       <div className="h-4 md:h-6" />
 
       {/* RANKING: last week / last period toggle */}
@@ -781,18 +785,20 @@ export default function FinancialPage() {
               </div>
             </div>
 
-            <RankingTable
-              rankingData={
-                rankingView === 'period'
-                  ? rankingPeriodData
-                  : rankingWeekData
-              }
-              payrollTarget={PAYROLL_TARGET}
-              foodTarget={FOOD_TARGET}
-              drinkTarget={DRINK_TARGET}
-            />
-          </section>
+                  {/* RANKING: last week / last period with toggle inside the card */}
+    
+          <RankingTable
+            rankingWeekData={rankingWeekData}
+            rankingPeriodData={rankingPeriodData}
+            rankingView={rankingView}
+            setRankingView={setRankingView}
+            payrollTarget={PAYROLL_TARGET}
+            foodTarget={FOOD_TARGET}
+            drinkTarget={DRINK_TARGET}
+          />
         )}
+
+      
 
       {/* extra bottom space so it doesn't crush the global footer */}
       <div className="h-10" />
