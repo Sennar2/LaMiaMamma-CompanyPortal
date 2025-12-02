@@ -9,6 +9,8 @@ type ComplianceInsights = {
   drinkPct: number;
   salesVsLastYearPct: number;
   avgPayrollVar4w: number; // rolling average of Payroll_v% last 4 weeks
+  // optional, used to compute £ lines if available
+  salesActual?: number;
 } | null;
 
 type ComplianceBarProps = {
@@ -21,7 +23,7 @@ const DRINK_TARGET = 5.5; // ≤ 5.5%
 const LY_TARGET = 0; // ≥ 0%
 
 // Traffic-light colour for avgPayrollVar4w
-// Rule (signed, not magnitude):
+// Rule (signed):
 //   avg ≤ +1%        -> green
 //   +1% < avg ≤ +2%  -> amber
 //   avg > +2%        -> red
@@ -35,6 +37,52 @@ function getTrendColor(avg: number | undefined | null) {
   return "bg-red-500";
 }
 
+function formatCurrency(val: number | undefined | null) {
+  if (val == null || Number.isNaN(val)) return "£0";
+  const abs = Math.abs(Number(val));
+  return (
+    "£" +
+    abs.toLocaleString("en-GB", {
+      maximumFractionDigits: 0,
+      minimumFractionDigits: 0,
+    })
+  );
+}
+
+// Cost line e.g. "Cost: ≈ £4,187 on £147,078 sales"
+function buildCostLine(
+  pct: number | undefined | null,
+  salesActual: number | undefined
+): string {
+  if (!salesActual || salesActual === 0) {
+    return "Cost: no sales data";
+  }
+  if (pct == null || Number.isNaN(pct)) {
+    return "Cost: no cost data";
+  }
+  const amount = (salesActual * pct) / 100;
+  return `Cost: ≈ ${formatCurrency(amount)} on ${formatCurrency(
+    salesActual
+  )} sales`;
+}
+
+// Sales vs LY £ line, using salesActual + % vs LY
+function buildSalesVsLyLine(
+  pct: number | undefined | null,
+  salesActual: number | undefined
+): string {
+  if (!salesActual || salesActual === 0) return "No LY data";
+  if (pct == null || Number.isNaN(pct)) return "No LY data";
+
+  const ratio = 1 + pct / 100; // pct = (A - LY)/LY *100
+  if (ratio === 0) return "No LY data";
+
+  const ly = salesActual / ratio;
+  const diff = salesActual - ly;
+  const sign = diff >= 0 ? "+" : "";
+  return `${sign}${formatCurrency(diff)} vs LY`;
+}
+
 // Reusable stat card
 function StatCard({
   title,
@@ -44,6 +92,8 @@ function StatCard({
   weekLabel,
   labelOk,
   labelNotOk,
+  costLine,
+  extraLine,
   showTrendDot,
   trendColor,
   trendLabel,
@@ -55,6 +105,8 @@ function StatCard({
   weekLabel: string;
   labelOk: string;
   labelNotOk: string;
+  costLine?: string;
+  extraLine?: string;
   showTrendDot?: boolean;
   trendColor?: string;
   trendLabel?: string;
@@ -106,11 +158,24 @@ function StatCard({
         {targetText}
       </div>
 
-      {/* Optional trend/extra line */}
+      {/* Cost / extra lines */}
+      {costLine && (
+        <div className="text-[11px] text-gray-600 mt-0.5">
+          {costLine}
+        </div>
+      )}
+      {extraLine && (
+        <div className="text-[11px] text-gray-500 mt-0.5">
+          {extraLine}
+        </div>
+      )}
+
+      {/* Optional trend line (for payroll) */}
       {showTrendDot && trendLabel && (
         <div className="flex items-center gap-2 text-[11px] text-gray-600 mt-1">
-          {/* invisible dot to align with header dot spacing on small cards */}
-          <span className={`inline-block w-2 h-2 rounded-full ${trendColor}`} />
+          <span
+            className={`inline-block w-2 h-2 rounded-full ${trendColor}`}
+          />
           <span>{trendLabel}</span>
         </div>
       )}
@@ -144,9 +209,11 @@ export default function ComplianceBar({ insights }: ComplianceBarProps) {
     }
   }
 
+  const salesActual = insights.salesActual;
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      {/* Payroll % with trend dot */}
+      {/* Payroll % with trend dot + £ line */}
       <StatCard
         title="Payroll %"
         valuePct={insights.payrollPct || 0}
@@ -155,12 +222,13 @@ export default function ComplianceBar({ insights }: ComplianceBarProps) {
         weekLabel={insights.wkLabel || "—"}
         labelOk="On target"
         labelNotOk="Off target"
+        costLine={buildCostLine(insights.payrollPct, salesActual)}
         showTrendDot
         trendColor={trendColor}
         trendLabel={trendLabel}
       />
 
-      {/* Food % */}
+      {/* Food % with £ line */}
       <StatCard
         title="Food %"
         valuePct={insights.foodPct || 0}
@@ -169,9 +237,10 @@ export default function ComplianceBar({ insights }: ComplianceBarProps) {
         weekLabel={insights.wkLabel || "—"}
         labelOk="On target"
         labelNotOk="Off target"
+        costLine={buildCostLine(insights.foodPct, salesActual)}
       />
 
-      {/* Drink % */}
+      {/* Drink % with £ line */}
       <StatCard
         title="Drink %"
         valuePct={insights.drinkPct || 0}
@@ -180,9 +249,10 @@ export default function ComplianceBar({ insights }: ComplianceBarProps) {
         weekLabel={insights.wkLabel || "—"}
         labelOk="On target"
         labelNotOk="Off target"
+        costLine={buildCostLine(insights.drinkPct, salesActual)}
       />
 
-      {/* Sales vs LY */}
+      {/* Sales vs LY with £ diff line */}
       <StatCard
         title="Sales vs LY"
         valuePct={insights.salesVsLastYearPct || 0}
@@ -191,6 +261,10 @@ export default function ComplianceBar({ insights }: ComplianceBarProps) {
         weekLabel={insights.wkLabel || "—"}
         labelOk="On target"
         labelNotOk="Below LY"
+        extraLine={buildSalesVsLyLine(
+          insights.salesVsLastYearPct,
+          salesActual
+        )}
       />
     </div>
   );
