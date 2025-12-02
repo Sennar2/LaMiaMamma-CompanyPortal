@@ -3,13 +3,17 @@
 import React from "react";
 
 export default function RankingTable({
-  rankingData,
+  rankingWeekData,
+  rankingPeriodData,
+  rankingView,
+  setRankingView,
   payrollTarget,
   foodTarget,
   drinkTarget,
-  title = "Site Ranking (last week)",
-  subtitle = "Sorted by highest Payroll %",
 }) {
+  const rankingData =
+    rankingView === "period" ? rankingPeriodData : rankingWeekData;
+
   if (!rankingData || rankingData.length === 0) return null;
 
   function colorFor(val, target, inverse = false) {
@@ -20,6 +24,11 @@ export default function RankingTable({
       color: ok ? "#059669" : "#dc2626",
     };
   }
+
+  const title =
+    rankingView === "period"
+      ? "Site Ranking (last period)"
+      : "Site Ranking (last week)";
 
   return (
     <div
@@ -40,39 +49,99 @@ export default function RankingTable({
           padding: "1rem 1rem 1.25rem",
         }}
       >
+        {/* Header row with title + toggle + subtitle */}
         <div
           style={{
             marginBottom: "0.75rem",
-           Display: "flex",
             display: "flex",
             flexWrap: "wrap",
             justifyContent: "space-between",
             rowGap: "0.5rem",
-            alignItems: "baseline",
+            alignItems: "center",
           }}
         >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "1rem",
-              fontWeight: 600,
-              color: "#111827",
-              lineHeight: 1.3,
-            }}
-          >
-            {title}
-          </h2>
+          <div>
+            <h2
+              style={{
+                margin: 0,
+                fontSize: "1rem",
+                fontWeight: 600,
+                color: "#111827",
+                lineHeight: 1.3,
+              }}
+            >
+              {title}
+            </h2>
+            <div
+              style={{
+                fontSize: "0.7rem",
+                color: "#6b7280",
+                lineHeight: 1.3,
+                marginTop: "0.15rem",
+              }}
+            >
+              Sorted by highest Payroll %
+            </div>
+          </div>
+
+          {/* toggle sits inside the card now */}
           <div
             style={{
-              fontSize: "0.7rem",
-              color: "#6b7280",
-              lineHeight: 1.3,
+              display: "inline-flex",
+              borderRadius: "999px",
+              border: "1px solid #e5e7eb",
+              backgroundColor: "#f9fafb",
+              padding: "2px",
+              gap: "2px",
+              fontSize: "0.75rem",
             }}
           >
-            {subtitle}
+            <button
+              type="button"
+              onClick={() => setRankingView("week")}
+              style={{
+                padding: "0.25rem 0.7rem",
+                borderRadius: "999px",
+                border: "none",
+                cursor: "pointer",
+                fontWeight: 500,
+                backgroundColor:
+                  rankingView === "week" ? "#111827" : "transparent",
+                color: rankingView === "week" ? "#fff" : "#4b5563",
+                boxShadow:
+                  rankingView === "week"
+                    ? "0 6px 12px rgba(0,0,0,0.25)"
+                    : "none",
+                transition: "all 0.15s ease",
+              }}
+            >
+              Last week
+            </button>
+            <button
+              type="button"
+              onClick={() => setRankingView("period")}
+              style={{
+                padding: "0.25rem 0.7rem",
+                borderRadius: "999px",
+                border: "none",
+                cursor: "pointer",
+                fontWeight: 500,
+                backgroundColor:
+                  rankingView === "period" ? "#111827" : "transparent",
+                color: rankingView === "period" ? "#fff" : "#4b5563",
+                boxShadow:
+                  rankingView === "period"
+                    ? "0 6px 12px rgba(0,0,0,0.25)"
+                    : "none",
+                transition: "all 0.15s ease",
+              }}
+            >
+              Last period
+            </button>
           </div>
         </div>
 
+        {/* Table */}
         <div
           style={{
             width: "100%",
@@ -120,7 +189,7 @@ export default function RankingTable({
                       color: "#9ca3af",
                     }}
                   >
-                    {" "}
+                    {' '}
                     (≤ {payrollTarget}%)
                   </span>
                 </th>
@@ -138,7 +207,7 @@ export default function RankingTable({
                       color: "#9ca3af",
                     }}
                   >
-                    {" "}
+                    {' '}
                     (≤ {foodTarget}%)
                   </span>
                 </th>
@@ -156,7 +225,7 @@ export default function RankingTable({
                       color: "#9ca3af",
                     }}
                   >
-                    {" "}
+                    {' '}
                     (≤ {drinkTarget}%)
                   </span>
                 </th>
@@ -174,10 +243,7 @@ export default function RankingTable({
 
             <tbody>
               {rankingData.map((row, idx) => {
-                const payrollStyle = colorFor(
-                  row.payrollPct,
-                  payrollTarget
-                );
+                const payrollStyle = colorFor(row.payrollPct, payrollTarget);
                 const foodStyle = colorFor(row.foodPct, foodTarget);
                 const drinkStyle = colorFor(row.drinkPct, drinkTarget);
                 const salesStyle = colorFor(row.salesVar, 0, true); // ≥0 is good
@@ -210,8 +276,7 @@ export default function RankingTable({
                           lineHeight: 1.3,
                         }}
                       >
-                        {/* For "last period" this will be something like P3 */}
-                        {row.week || "-"}
+                        {row.week || '-'}
                       </div>
                     </td>
 
@@ -256,7 +321,7 @@ export default function RankingTable({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {row.salesVar >= 0 ? "+" : ""}
+                      {row.salesVar >= 0 ? '+' : ''}
                       £{Math.round(row.salesVar).toLocaleString()}
                     </td>
                   </tr>
