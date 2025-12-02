@@ -6,7 +6,7 @@ import Image from "next/image";
 import brands from "@/data/brands.json";
 import { supabase } from "@/lib/supabaseClient";
 import { LOCATIONS as PLANDAY_LOCATIONS } from "@/data/locations";
-import ComplianceBar from "@/src/components/financial/ComplianceBar";
+import ComplianceBar from "@/components/financial/ComplianceBar";
 import MaintenanceCountBadge from "@/components/MaintenanceCountBadge";
 
 /* ──────────────────────────────────────────────────────────────────────────────
