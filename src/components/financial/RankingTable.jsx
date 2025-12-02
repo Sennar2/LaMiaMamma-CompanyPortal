@@ -43,6 +43,7 @@ export default function RankingTable({
         <div
           style={{
             marginBottom: "0.75rem",
+           Display: "flex",
             display: "flex",
             flexWrap: "wrap",
             justifyContent: "space-between",
@@ -209,6 +210,7 @@ export default function RankingTable({
                           lineHeight: 1.3,
                         }}
                       >
+                        {/* For "last period" this will be something like P3 */}
                         {row.week || "-"}
                       </div>
                     </td>
