@@ -18,13 +18,13 @@ type InsightsShape = {
 
 type InsightsBarProps = {
   insights: InsightsShape | null;
-  payrollTarget: number;
+  payrollTarget: number; // still passed in, but not used here
   currentWeekNow: string;
 };
 
 export default function InsightsBar({
   insights,
-  payrollTarget,
+  payrollTarget: _payrollTarget, // keep prop for compatibility
   currentWeekNow,
 }: InsightsBarProps) {
   // helpers
@@ -48,10 +48,10 @@ export default function InsightsBar({
   // layout styles
   const containerStyle: React.CSSProperties = {
     maxWidth: "1280px",
-    margin: "0 auto",
+    margin: "0.75rem auto 0", // a bit more space from controls
     display: "grid",
-    gridTemplateColumns: "minmax(0,1.1fr) minmax(0,1.6fr)",
-    gap: "1rem",
+    gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))",
+    gap: "1.25rem",
     fontFamily: "Inter, system-ui, sans-serif",
   };
 
@@ -60,19 +60,19 @@ export default function InsightsBar({
     borderRadius: "0.9rem",
     boxShadow:
       "0 24px 40px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)",
-    padding: "1.1rem 1.4rem",
-    minHeight: "120px",
+    padding: "1.1rem 1.5rem",
+    minHeight: "115px",
   };
 
   const smallLabel: React.CSSProperties = {
-    fontSize: "0.75rem",
+    fontSize: "0.8rem",
     fontWeight: 500,
     color: "#6b7280",
-    marginBottom: "0.35rem",
+    marginBottom: "0.4rem",
   };
 
   const bigWeek: React.CSSProperties = {
-    fontSize: "2rem",
+    fontSize: "2.1rem",
     fontWeight: 700,
     letterSpacing: "0.02em",
     color: "#111827",
@@ -88,13 +88,19 @@ export default function InsightsBar({
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: "0.5rem",
+    marginBottom: "0.6rem",
   };
 
   const titleStyle: React.CSSProperties = {
-    fontSize: "0.85rem",
+    fontSize: "0.9rem",
     fontWeight: 600,
     color: "#111827",
+  };
+
+  const subtitleStyle: React.CSSProperties = {
+    marginTop: "0.1rem",
+    fontSize: "0.8rem",
+    color: "#6b7280",
   };
 
   const weekLabel: React.CSSProperties = {
@@ -106,12 +112,12 @@ export default function InsightsBar({
   };
 
   const bigNumberBase: React.CSSProperties = {
-    fontSize: "1.25rem",
+    fontSize: "1.4rem",
     fontWeight: 700,
     lineHeight: 1.1,
     display: "flex",
     alignItems: "center",
-    gap: "0.5rem",
+    gap: "0.55rem",
   };
 
   const bigNumberGood: React.CSSProperties = {
@@ -127,7 +133,7 @@ export default function InsightsBar({
   const pillBase: React.CSSProperties = {
     fontSize: "0.65rem",
     fontWeight: 600,
-    padding: "0.15rem 0.6rem",
+    padding: "0.18rem 0.7rem",
     borderRadius: "999px",
     textTransform: "uppercase",
     letterSpacing: "0.05em",
@@ -146,14 +152,14 @@ export default function InsightsBar({
   };
 
   const lineText: React.CSSProperties = {
-    marginTop: "0.25rem",
+    marginTop: "0.35rem",
     fontSize: "0.8rem",
     color: "#4b5563",
   };
 
   const mutedLine: React.CSSProperties = {
     marginTop: "0.2rem",
-    fontSize: "0.75rem",
+    fontSize: "0.78rem",
     color: "#6b7280",
   };
 
@@ -170,118 +176,55 @@ export default function InsightsBar({
     );
   }
 
-  const {
-    wkLabel,
-    salesActual,
-    salesBudget,
-    salesVar,
-    salesVarPct,
-    payrollPct,
-  } = insights;
+  const { wkLabel, salesActual, salesBudget, salesVar, salesVarPct } =
+    insights;
 
   const isAboveBudget = salesVar >= 0;
   const salesVarAbs = Math.abs(salesVar);
 
-  const payrollOk = payrollPct <= payrollTarget;
-
   return (
     <section style={containerStyle}>
-      {/* LEFT: current week */}
+      {/* Card 1: current week */}
       <div style={cardBase}>
         <div style={smallLabel}>Current Week</div>
         <div style={bigWeek}>{currentWeekNow}</div>
         <div style={subtleText}>Today&apos;s trading period</div>
       </div>
 
-      {/* RIGHT: last week results */}
+      {/* Card 2: last week – Sales only */}
       <div style={cardBase}>
         <div style={headerRow}>
           <div>
             <div style={titleStyle}>Last Week Results</div>
-            <div
-              style={{
-                marginTop: "0.1rem",
-                fontSize: "0.75rem",
-                color: "#6b7280",
-              }}
-            >
-              Sales vs Budget &amp; Payroll
-            </div>
+            <div style={subtitleStyle}>Sales vs Budget</div>
           </div>
           <div style={weekLabel}>{wkLabel}</div>
         </div>
 
-        {/* Sales vs Budget block */}
-        <div style={{ marginBottom: "0.6rem" }}>
-          <div
-            style={{
-              fontSize: "0.75rem",
-              fontWeight: 600,
-              color: "#b91c1c",
-              marginBottom: "0.1rem",
-            }}
-          >
-            Sales vs Budget
-          </div>
-
-          <div style={isAboveBudget ? bigNumberGood : bigNumberBad}>
-            <span>
-              {salesVar === 0
-                ? "£0"
-                : `${isAboveBudget ? "+" : "-"}${formatCurrency(
-                    salesVarAbs
-                  )}`}
-            </span>
-            <span style={isAboveBudget ? pillGood : pillBad}>
-              {isAboveBudget ? "Above budget" : "Below budget"}
-            </span>
-          </div>
-
-          <div style={lineText}>
-            {salesVarPct === 0
-              ? "On budget"
-              : `${percentText(Math.abs(salesVarPct))} ${
-                  salesVarPct > 0 ? "over" : "under"
-                } budget`}
-          </div>
-
-          <div style={mutedLine}>
-            Actual {formatCurrency(salesActual)} vs Budget{" "}
-            {formatCurrency(salesBudget)}
-          </div>
+        <div style={isAboveBudget ? bigNumberGood : bigNumberBad}>
+          <span>
+            {salesVar === 0
+              ? "£0"
+              : `${isAboveBudget ? "+" : "-"}${formatCurrency(
+                  salesVarAbs
+                )}`}
+          </span>
+          <span style={isAboveBudget ? pillGood : pillBad}>
+            {isAboveBudget ? "Above budget" : "Below budget"}
+          </span>
         </div>
 
-        {/* Divider */}
-        <div
-          style={{
-            borderTop: "1px dashed #e5e7eb",
-            margin: "0.4rem 0 0.5rem",
-          }}
-        />
+        <div style={lineText}>
+          {salesVarPct === 0
+            ? "On budget"
+            : `${percentText(Math.abs(salesVarPct))} ${
+                salesVarPct > 0 ? "over" : "under"
+              } budget`}
+        </div>
 
-        {/* Payroll block */}
-        <div>
-          <div
-            style={{
-              fontSize: "0.75rem",
-              fontWeight: 600,
-              color: "#374151",
-              marginBottom: "0.1rem",
-            }}
-          >
-            Payroll %
-          </div>
-
-          <div style={payrollOk ? bigNumberGood : bigNumberBad}>
-            <span>{percentText(payrollPct)}</span>
-            <span style={payrollOk ? pillGood : pillBad}>
-              {payrollOk ? "On target" : "Off target"}
-            </span>
-          </div>
-
-          <div style={mutedLine}>
-            Target ≤ {payrollTarget}% – based on last completed week
-          </div>
+        <div style={mutedLine}>
+          Actual {formatCurrency(salesActual)} vs Budget{" "}
+          {formatCurrency(salesBudget)}
         </div>
       </div>
     </section>
