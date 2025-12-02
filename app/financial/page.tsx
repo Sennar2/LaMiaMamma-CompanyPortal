@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CSVLink } from 'react-csv';
 import { supabase } from '../../src/lib/supabaseClient';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+
 
 // Financial UI components (already in your repo)
 import InsightsBar from '../../src/components/financial/InsightsBar';
@@ -415,29 +417,41 @@ export default function FinancialPage() {
   const insights = useMemo(() => computeInsightsBundle(mergedRows), [mergedRows]);
   const currentWeekNow = getCurrentWeekLabel();
 
-  // 9) Ranking (admins / ops only) — last completed week + last completed period
-  const [rankingWeekData, setRankingWeekData] = useState<any[]>([]);
+  // 9) g (admins / ops only) — last completed week + last completed period
+    const [rankingWeekData, setRankingWeekData] = useState<any[]>([]);
   const [rankingPeriodData, setRankingPeriodData] = useState<any[]>([]);
   const [rankingView, setRankingView] = useState<'week' | 'period'>('week');
+
+  const [rankingWeekOptions, setRankingWeekOptions] = useState<string[]>([]);
+  const [rankingPeriodOptions, setRankingPeriodOptions] = useState<string[]>([]);
+  const [selectedRankingWeek, setSelectedRankingWeek] = useState<string>('');
+  const [selectedRankingPeriod, setSelectedRankingPeriod] = useState<string>('');
+
+  const rankingsByWeekRef = useRef<Record<string, any[]>>({});
+  const rankingsByPeriodRef = useRef<Record<string, any[]>>({});
+
 
   useEffect(() => {
     (async () => {
       if (!['admin', 'operation', 'ops'].includes(role)) {
         setRankingWeekData([]);
         setRankingPeriodData([]);
+        setRankingWeekOptions([]);
+        setRankingPeriodOptions([]);
+        rankingsByWeekRef.current = {};
+        rankingsByPeriodRef.current = {};
         return;
       }
 
       try {
-        const weekResults: any[] = [];
-        const periodResults: any[] = [];
+        const rankingsByWeek: Record<string, any[]> = {};
+        const rankingsByPeriod: Record<string, any[]> = {};
 
-        // ---- last completed WEEK (same as before) ----
         const currentWeekNum = getISOWeek();
         const snapshotWeekNum =
           currentWeekNum - 1 <= 0 ? currentWeekNum : currentWeekNum - 1;
 
-        // ---- determine last COMPLETED PERIOD (one period BEFORE the period that contains snapshotWeekNum) ----
+        // determine the period that contains the snapshot week
         const periodOrder = Array.from(
           new Set(WEEK_TO_PERIOD_QUARTER.map((m) => m.period))
         ); // ["P1","P2",...,"P12"]
@@ -447,17 +461,17 @@ export default function FinancialPage() {
           return wNum === snapshotWeekNum;
         });
 
-        // period that contains the snapshot week (current period)
-        const currentPeriod = snapshotEntry?.period || periodOrder[periodOrder.length - 1];
+        const currentPeriod =
+          snapshotEntry?.period || periodOrder[periodOrder.length - 1];
 
-        // last *completed* period = one step before currentPeriod
+        // last completed period = one before currentPeriod
         let lastCompletedPeriod = currentPeriod;
         const idx = periodOrder.indexOf(currentPeriod);
         if (idx > 0) {
           lastCompletedPeriod = periodOrder[idx - 1];
         }
 
-        // ---- fetch all store sheets once ----
+        // load all store sheets
         const all = await Promise.all(
           STORE_LOCATIONS.map(async (loc) => {
             const rows = await fetchTab(loc);
@@ -477,121 +491,204 @@ export default function FinancialPage() {
 
           if (!decorated.length) continue;
 
-          // ----- LAST COMPLETED WEEK (unchanged) -----
-          let latest = decorated.find(
-            (r: any) => r.__weekNum === snapshotWeekNum && rowHasData(r)
-          );
-          if (!latest) {
-            const candidates = decorated
-              .filter((r: any) => r.__weekNum <= snapshotWeekNum && rowHasData(r))
-              .sort((a: any, b: any) => a.__weekNum - b.__weekNum);
-            latest = candidates[candidates.length - 1];
+          // ----- WEEKLY RANKINGS (per week per store, only up to snapshotWeekNum) -----
+          for (const r of decorated) {
+            if (!rowHasData(r)) continue;
+            if (!r.Week) continue;
+
+            if (r.__weekNum > snapshotWeekNum) continue; // ignore future / incomplete weeks
+
+            const weekLabel = String(r.Week).trim();
+
+            const salesActual = r.Sales_Actual || 0;
+            const salesBudget = r.Sales_Budget || 0;
+
+            if (
+              salesActual === 0 &&
+              salesBudget === 0 &&
+              (r.Payroll_Actual || 0) === 0
+            ) {
+              continue;
+            }
+
+            const payrollPct =
+              salesActual !== 0 ? (r.Payroll_Actual / salesActual) * 100 : 0;
+            const foodPct =
+              salesActual !== 0 ? (r.Food_Actual / salesActual) * 100 : 0;
+            const drinkPct =
+              salesActual !== 0 ? (r.Drink_Actual / salesActual) * 100 : 0;
+
+            const salesVar = salesActual - salesBudget;
+
+            if (!rankingsByWeek[weekLabel]) rankingsByWeek[weekLabel] = [];
+            rankingsByWeek[weekLabel].push({
+              location: loc,
+              week: weekLabel,
+              payrollPct,
+              foodPct,
+              drinkPct,
+              salesVar,
+            });
           }
-          if (!latest) {
-            const cands = decorated
-              .filter(rowHasData)
-              .sort((a: any, b: any) => a.__weekNum - b.__weekNum);
-            latest = cands[cands.length - 1];
-          }
-          if (!latest) continue;
 
-          const salesActual = latest.Sales_Actual || 0;
-          const salesBudget = latest.Sales_Budget || 0;
+          // ----- PERIOD RANKINGS (aggregate per period per store) -----
+          const perPeriodTotals: Record<
+            string,
+            {
+              salesActual: number;
+              salesBudget: number;
+              payrollActual: number;
+              foodActual: number;
+              drinkActual: number;
+              maxWeekNum: number;
+            }
+          > = {};
 
-          const payrollPct =
-            salesActual !== 0 ? (latest.Payroll_Actual / salesActual) * 100 : 0;
-          const foodPct =
-            salesActual !== 0 ? (latest.Food_Actual / salesActual) * 100 : 0;
-          const drinkPct =
-            salesActual !== 0 ? (latest.Drink_Actual / salesActual) * 100 : 0;
+          for (const r of decorated) {
+            if (!rowHasData(r)) continue;
+            if (r.__weekNum > snapshotWeekNum) continue;
 
-          const salesVar = salesActual - salesBudget;
-
-          weekResults.push({
-            location: loc,
-            week: latest.Week, // e.g. "W31"
-            payrollPct,
-            foodPct,
-            drinkPct,
-            salesVar,
-          });
-
-          // ----- LAST COMPLETED PERIOD (aggregate only that period) -----
-          const withPeriod = decorated.map((r: any) => {
             const wLabel = String(r.Week || '').trim();
             const match = WEEK_TO_PERIOD_QUARTER.find((x) => x.week === wLabel);
-            return {
-              ...r,
-              Period: match?.period || 'P?',
-            };
-          });
+            const periodLabel = match?.period || 'P?';
+            if (periodLabel === 'P?') continue;
 
-          // only rows from lastCompletedPeriod and up to snapshotWeekNum
-          const periodRows = withPeriod.filter(
-            (r: any) =>
-              r.Period === lastCompletedPeriod && r.__weekNum <= snapshotWeekNum
-          );
+            if (!perPeriodTotals[periodLabel]) {
+              perPeriodTotals[periodLabel] = {
+                salesActual: 0,
+                salesBudget: 0,
+                payrollActual: 0,
+                foodActual: 0,
+                drinkActual: 0,
+                maxWeekNum: 0,
+              };
+            }
 
-          if (!periodRows.length) continue;
-
-          let salesActualTotal = 0;
-          let salesBudgetTotal = 0;
-          let payrollActualTotal = 0;
-          let foodActualTotal = 0;
-          let drinkActualTotal = 0;
-
-          for (const r of periodRows) {
-            salesActualTotal += r.Sales_Actual || 0;
-            salesBudgetTotal += r.Sales_Budget || 0;
-            payrollActualTotal += r.Payroll_Actual || 0;
-            foodActualTotal += r.Food_Actual || 0;
-            drinkActualTotal += r.Drink_Actual || 0;
+            const bucket = perPeriodTotals[periodLabel];
+            bucket.salesActual += r.Sales_Actual || 0;
+            bucket.salesBudget += r.Sales_Budget || 0;
+            bucket.payrollActual += r.Payroll_Actual || 0;
+            bucket.foodActual += r.Food_Actual || 0;
+            bucket.drinkActual += r.Drink_Actual || 0;
+            bucket.maxWeekNum = Math.max(bucket.maxWeekNum, r.__weekNum || 0);
           }
 
-          if (
-            salesActualTotal === 0 &&
-            salesBudgetTotal === 0 &&
-            payrollActualTotal === 0
-          ) {
-            continue;
+          for (const [periodLabel, bucket] of Object.entries(perPeriodTotals)) {
+            const {
+              salesActual,
+              salesBudget,
+              payrollActual,
+              foodActual,
+              drinkActual,
+            } = bucket;
+
+            if (
+              salesActual === 0 &&
+              salesBudget === 0 &&
+              payrollActual === 0
+            ) {
+              continue;
+            }
+
+            const payrollPctPeriod =
+              salesActual !== 0 ? (payrollActual / salesActual) * 100 : 0;
+            const foodPctPeriod =
+              salesActual !== 0 ? (foodActual / salesActual) * 100 : 0;
+            const drinkPctPeriod =
+              salesActual !== 0 ? (drinkActual / salesActual) * 100 : 0;
+
+            const salesVarPeriod = salesActual - salesBudget;
+
+            if (!rankingsByPeriod[periodLabel])
+              rankingsByPeriod[periodLabel] = [];
+            rankingsByPeriod[periodLabel].push({
+              location: loc,
+              week: periodLabel,
+              payrollPct: payrollPctPeriod,
+              foodPct: foodPctPeriod,
+              drinkPct: drinkPctPeriod,
+              salesVar: salesVarPeriod,
+            });
           }
-
-          const payrollPctPeriod =
-            salesActualTotal !== 0
-              ? (payrollActualTotal / salesActualTotal) * 100
-              : 0;
-          const foodPctPeriod =
-            salesActualTotal !== 0
-              ? (foodActualTotal / salesActualTotal) * 100
-              : 0;
-          const drinkPctPeriod =
-            salesActualTotal !== 0
-              ? (drinkActualTotal / salesActualTotal) * 100
-              : 0;
-
-          const salesVarPeriod = salesActualTotal - salesBudgetTotal;
-
-          periodResults.push({
-            location: loc,
-            week: lastCompletedPeriod, // e.g. "P11"
-            payrollPct: payrollPctPeriod,
-            foodPct: foodPctPeriod,
-            drinkPct: drinkPctPeriod,
-            salesVar: salesVarPeriod,
-          });
         }
 
-        weekResults.sort((a, b) => b.payrollPct - a.payrollPct);
-        periodResults.sort((a, b) => b.payrollPct - a.payrollPct);
+        // sort inside each week/period by payroll %
+        Object.keys(rankingsByWeek).forEach((week) => {
+          rankingsByWeek[week].sort((a, b) => b.payrollPct - a.payrollPct);
+        });
+        Object.keys(rankingsByPeriod).forEach((period) => {
+          rankingsByPeriod[period].sort((a, b) => b.payrollPct - a.payrollPct);
+        });
 
-        setRankingWeekData(weekResults);
-        setRankingPeriodData(periodResults);
+        // options
+        const weekKeys = Object.keys(rankingsByWeek);
+        const periodKeys = Object.keys(rankingsByPeriod);
+
+        weekKeys.sort(
+          (a, b) => parseWeekNum(a) - parseWeekNum(b)
+        );
+        periodKeys.sort((a, b) => {
+          const na = parseInt(a.replace(/[^\d]/g, ''), 10) || 0;
+          const nb = parseInt(b.replace(/[^\d]/g, ''), 10) || 0;
+          return na - nb;
+        });
+
+        setRankingWeekOptions(weekKeys);
+        setRankingPeriodOptions(periodKeys);
+
+        // default week = last completed week with data
+        let defaultWeekLabel = '';
+        const snapshotLabel = `W${snapshotWeekNum}`;
+        if (weekKeys.includes(snapshotLabel)) {
+          defaultWeekLabel = snapshotLabel;
+        } else if (weekKeys.length > 0) {
+          defaultWeekLabel = weekKeys[weekKeys.length - 1];
+        }
+
+        // default period = last completed period with data
+        let defaultPeriodLabel = '';
+        if (periodKeys.includes(lastCompletedPeriod)) {
+          defaultPeriodLabel = lastCompletedPeriod;
+        } else if (periodKeys.length > 0) {
+          defaultPeriodLabel = periodKeys[periodKeys.length - 1];
+        }
+
+        setSelectedRankingWeek(defaultWeekLabel);
+        setSelectedRankingPeriod(defaultPeriodLabel);
+
+        setRankingWeekData(defaultWeekLabel ? rankingsByWeek[defaultWeekLabel] : []);
+        setRankingPeriodData(
+          defaultPeriodLabel ? rankingsByPeriod[defaultPeriodLabel] : []
+        );
+
+        rankingsByWeekRef.current = rankingsByWeek;
+        rankingsByPeriodRef.current = rankingsByPeriod;
       } catch {
         setRankingWeekData([]);
         setRankingPeriodData([]);
+        setRankingWeekOptions([]);
+        setRankingPeriodOptions([]);
+        rankingsByWeekRef.current = {};
+        rankingsByPeriodRef.current = {};
       }
     })();
   }, [role]);
+
+    const handleRankingWeekChange = (value: string) => {
+    setSelectedRankingWeek(value);
+    const map = rankingsByWeekRef.current || {};
+    const rows = (map[value] || []).slice().sort((a, b) => b.payrollPct - a.payrollPct);
+    setRankingWeekData(rows);
+    setRankingView('week');
+  };
+
+  const handleRankingPeriodChange = (value: string) => {
+    setSelectedRankingPeriod(value);
+    const map = rankingsByPeriodRef.current || {};
+    const rows = (map[value] || []).slice().sort((a, b) => b.payrollPct - a.payrollPct);
+    setRankingPeriodData(rows);
+    setRankingView('period');
+  };
 
 
 
@@ -753,14 +850,10 @@ export default function FinancialPage() {
         />
       )}
 
-      {/* Space before ing */}
-      <div className="h-4 md:h-6" />
-
-
       {/* Space before ranking */}
       <div className="h-4 md:h-6" />
 
-      {/* RANKING: last week / last period (toggle lives inside the card) */}
+      {/* RANKING: last week / last period (picker inside the card) */}
       {['admin', 'operation', 'ops'].includes(role) &&
         (rankingWeekData.length > 0 || rankingPeriodData.length > 0) && (
           <RankingTable
@@ -768,11 +861,18 @@ export default function FinancialPage() {
             rankingPeriodData={rankingPeriodData}
             rankingView={rankingView}
             setRankingView={setRankingView}
+            weekOptions={rankingWeekOptions}
+            selectedWeek={selectedRankingWeek}
+            onWeekChange={handleRankingWeekChange}
+            periodOptions={rankingPeriodOptions}
+            selectedPeriod={selectedRankingPeriod}
+            onPeriodChange={handleRankingPeriodChange}
             payrollTarget={PAYROLL_TARGET}
             foodTarget={FOOD_TARGET}
             drinkTarget={DRINK_TARGET}
           />
         )}
+
 
       {/* extra bottom space so it doesn't crush the global footer */}
       <div className="h-10" />
