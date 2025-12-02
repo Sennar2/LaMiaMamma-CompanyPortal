@@ -755,6 +755,9 @@ export default function FinancialPage() {
       <div className="h-4 md:h-6" />
 
 
+      {/* Space before ranking */}
+      <div className="h-4 md:h-6" />
+
       {/* RANKING: last week / last period (toggle lives inside the card) */}
       {['admin', 'operation', 'ops'].includes(role) &&
         (rankingWeekData.length > 0 || rankingPeriodData.length > 0) && (
@@ -771,4 +774,7 @@ export default function FinancialPage() {
 
       {/* extra bottom space so it doesn't crush the global footer */}
       <div className="h-10" />
+    </main>
+  );
+}
 
