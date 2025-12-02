@@ -20,77 +20,100 @@ const FOOD_TARGET = 12.5; // ≤ 12.5%
 const DRINK_TARGET = 5.5; // ≤ 5.5%
 const LY_TARGET = 0; // ≥ 0%
 
-// colour helper for avgPayrollVar4w
+// Traffic-light colour for avgPayrollVar4w
+// Rule (signed, not magnitude):
+//   avg ≤ +1%        -> green
+//   +1% < avg ≤ +2%  -> amber
+//   avg > +2%        -> red
+//   (negative = under target = green)
 function getTrendColor(avg: number | undefined | null) {
   if (avg === undefined || avg === null || Number.isNaN(avg)) {
     return "bg-gray-400";
   }
-
-  // use magnitude of the average, not the signed value
-  const mag = Math.abs(avg);
-
-  if (mag < 1) return "bg-green-500";     // very tight, stable
-  if (mag < 2) return "bg-yellow-400";    // drifting / needs attention
-  return "bg-red-500";                    // out of control
+  if (avg <= 1) return "bg-green-500";
+  if (avg <= 2) return "bg-yellow-400";
+  return "bg-red-500";
 }
 
-
-// A reusable stat card component
+// Reusable stat card
 function StatCard({
   title,
   valuePct,
   ok,
   targetText,
   weekLabel,
+  labelOk,
+  labelNotOk,
   showTrendDot,
   trendColor,
+  trendLabel,
 }: {
   title: string;
   valuePct: number;
   ok: boolean;
   targetText: string;
   weekLabel: string;
+  labelOk: string;
+  labelNotOk: string;
   showTrendDot?: boolean;
   trendColor?: string;
+  trendLabel?: string;
 }) {
+  const displayPct = Number.isNaN(valuePct) ? 0 : valuePct;
+
   return (
-    <div className="bg-white rounded-xl border shadow p-4 flex flex-col min-w-[200px]">
-      {/* header line */}
-      <div className="flex justify-between items-start text-[11px] leading-none">
-        <div className="text-gray-800 font-semibold text-[13px]">
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col min-w-[220px] gap-1.5">
+      {/* Header line */}
+      <div className="flex items-center justify-between text-[11px] leading-tight">
+        <div className="text-gray-900 font-semibold text-[13px]">
           {title}
         </div>
 
-        <div className="flex items-center gap-2 text-right text-gray-500 font-normal">
-          {showTrendDot ? (
+        <div className="flex items-center gap-2 text-gray-500">
+          {showTrendDot && trendColor ? (
             <span
-              className={`inline-block w-3.5 h-3.5 rounded-full ${trendColor} border border-white shadow-[0_0_4px_rgba(0,0,0,0.4)]`}
+              className={`inline-block w-3 h-3 rounded-full ${trendColor} border border-white shadow-[0_0_3px_rgba(0,0,0,0.4)]`}
               title="4-week payroll trend"
             />
           ) : null}
 
-          <div className="text-right leading-tight">
-            <span className="font-semibold text-gray-700">{weekLabel}</span>{" "}
-            • {targetText}
-          </div>
+          <span className="px-2 py-0.5 rounded-full bg-gray-50 text-[10px] font-medium text-gray-700">
+            {weekLabel || "—"}
+          </span>
         </div>
       </div>
 
-      {/* value */}
+      {/* Main value row */}
       <div
-        className={`mt-3 text-xl font-bold flex items-center gap-2 ${
-          ok ? "text-green-600" : "text-red-600"
+        className={`mt-2 flex items-center gap-2 text-xl font-bold ${
+          ok ? "text-emerald-600" : "text-red-600"
         }`}
       >
-        {isNaN(valuePct) ? "0.0%" : `${valuePct.toFixed(1)}%`}{" "}
+        <span>{displayPct.toFixed(1)}%</span>
         <span
-          className={`text-xs font-bold ${
-            ok ? "text-green-600" : "text-red-600"
+          className={`text-[10px] uppercase tracking-wide rounded-full px-2 py-0.5 font-semibold ${
+            ok
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-red-50 text-red-700"
           }`}
         >
-          {ok ? "✔" : "✘"}
+          {ok ? labelOk : labelNotOk}
         </span>
       </div>
+
+      {/* Target line */}
+      <div className="text-[11px] text-gray-600 mt-0.5">
+        {targetText}
+      </div>
+
+      {/* Optional trend/extra line */}
+      {showTrendDot && trendLabel && (
+        <div className="flex items-center gap-2 text-[11px] text-gray-600 mt-1">
+          {/* invisible dot to align with header dot spacing on small cards */}
+          <span className={`inline-block w-2 h-2 rounded-full ${trendColor}`} />
+          <span>{trendLabel}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -98,26 +121,43 @@ function StatCard({
 export default function ComplianceBar({ insights }: ComplianceBarProps) {
   if (!insights) return null;
 
-  // Pass/fail checks vs hard targets
   const payrollOk = insights.payrollPct <= PAYROLL_TARGET;
   const foodOk = insights.foodPct <= FOOD_TARGET;
   const drinkOk = insights.drinkPct <= DRINK_TARGET;
   const lyOk = insights.salesVsLastYearPct >= LY_TARGET;
 
-  // traffic light circle colour from avg of last 4 weeks Payroll_v%
   const trendColor = getTrendColor(insights.avgPayrollVar4w);
+  const avgVar = insights.avgPayrollVar4w ?? 0;
+
+  let trendLabel = "No 4-week data";
+  if (!Number.isNaN(avgVar)) {
+    if (avgVar === 0) {
+      trendLabel = "4-week avg exactly on target";
+    } else if (avgVar > 0) {
+      trendLabel = `${avgVar.toFixed(
+        1
+      )} pts over target (4-week avg)`;
+    } else {
+      trendLabel = `${Math.abs(avgVar).toFixed(
+        1
+      )} pts under target (4-week avg)`;
+    }
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      {/* Payroll % card WITH status dot */}
+      {/* Payroll % with trend dot */}
       <StatCard
         title="Payroll %"
         valuePct={insights.payrollPct || 0}
         ok={payrollOk}
         targetText={`Target ≤ ${PAYROLL_TARGET}%`}
         weekLabel={insights.wkLabel || "—"}
-        showTrendDot={true}
+        labelOk="On target"
+        labelNotOk="Off target"
+        showTrendDot
         trendColor={trendColor}
+        trendLabel={trendLabel}
       />
 
       {/* Food % */}
@@ -127,6 +167,8 @@ export default function ComplianceBar({ insights }: ComplianceBarProps) {
         ok={foodOk}
         targetText={`Target ≤ ${FOOD_TARGET}%`}
         weekLabel={insights.wkLabel || "—"}
+        labelOk="On target"
+        labelNotOk="Off target"
       />
 
       {/* Drink % */}
@@ -136,6 +178,8 @@ export default function ComplianceBar({ insights }: ComplianceBarProps) {
         ok={drinkOk}
         targetText={`Target ≤ ${DRINK_TARGET}%`}
         weekLabel={insights.wkLabel || "—"}
+        labelOk="On target"
+        labelNotOk="Off target"
       />
 
       {/* Sales vs LY */}
@@ -145,6 +189,8 @@ export default function ComplianceBar({ insights }: ComplianceBarProps) {
         ok={lyOk}
         targetText={`Target ≥ ${LY_TARGET}%`}
         weekLabel={insights.wkLabel || "—"}
+        labelOk="On target"
+        labelNotOk="Below LY"
       />
     </div>
   );
