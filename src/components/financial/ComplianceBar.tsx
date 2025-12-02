@@ -21,7 +21,7 @@ type ComplianceBarProps = {
   payrollTarget: number;
   foodTarget: number;
   drinkTarget: number;
-  // <- THIS IS NOW OPTIONAL so Vercel stops complaining.
+  // optional so callers don't have to pass it
   complianceSnapshot?: InsightsShape | null;
 };
 
@@ -55,12 +55,54 @@ export default function ComplianceBar({
 
   const {
     wkLabel,
+    salesActual,
     payrollPct,
     foodPct,
     drinkPct,
     salesVsLastYearPct,
     avgPayrollVar4w,
   } = snapshot;
+
+  // simple currency formatter
+  function formatCurrency(val: number | undefined | null) {
+    if (val == null || Number.isNaN(val)) return "£0";
+    return (
+      "£" +
+      Math.round(Number(val)).toLocaleString("en-GB", {
+        maximumFractionDigits: 0,
+      })
+    );
+  }
+
+  // helper to show "≈ £X on £Y sales"
+  function spendLine(pctVal: number | undefined | null) {
+    if (!salesActual || salesActual === 0) return "No sales data";
+    if (pctVal == null || Number.isNaN(pctVal)) return "No spend data";
+
+    const amount = (salesActual * pctVal) / 100;
+    return `≈ ${formatCurrency(amount)} on ${formatCurrency(
+      salesActual
+    )} sales`;
+  }
+
+  // derive £ difference vs LY from % and actual
+  function salesVsLyLine() {
+    const p = salesVsLastYearPct;
+    if (p == null || Number.isNaN(p) || !salesActual) {
+      return "No LY data";
+    }
+
+    // p = (A - LY) / LY * 100
+    // => LY = A / (1 + p/100)
+    const ratio = 1 + p / 100;
+    if (ratio === 0) return "No LY data";
+
+    const ly = salesActual / ratio;
+    const diff = salesActual - ly;
+
+    const sign = diff >= 0 ? "+" : "";
+    return `${sign}${formatCurrency(diff)} vs LY`;
+  }
 
   // TRAFFIC LIGHT COLOUR:
   // rule:
@@ -148,6 +190,12 @@ export default function ComplianceBar({
     gap: "0.4rem",
   };
 
+  const subLine: React.CSSProperties = {
+    marginTop: "0.15rem",
+    fontSize: "0.75rem",
+    color: "#6b7280",
+  };
+
   return (
     <section
       style={{
@@ -177,6 +225,7 @@ export default function ComplianceBar({
           <span>{pct(payrollPct)}</span>
           <span>{payrollIsOk ? "✓" : "✕"}</span>
         </div>
+        <div style={subLine}>{spendLine(payrollPct)}</div>
       </div>
 
       {/* Food card */}
@@ -197,6 +246,7 @@ export default function ComplianceBar({
           <span>{pct(foodPct)}</span>
           <span>{foodIsOk ? "✓" : "✕"}</span>
         </div>
+        <div style={subLine}>{spendLine(foodPct)}</div>
       </div>
 
       {/* Drink card */}
@@ -217,6 +267,7 @@ export default function ComplianceBar({
           <span>{pct(drinkPct)}</span>
           <span>{drinkIsOk ? "✓" : "✕"}</span>
         </div>
+        <div style={subLine}>{spendLine(drinkPct)}</div>
       </div>
 
       {/* Sales vs LY card */}
@@ -237,6 +288,7 @@ export default function ComplianceBar({
           <span>{pct(salesVsLastYearPct)}</span>
           <span>{salesVsLyOk ? "✓" : "✕"}</span>
         </div>
+        <div style={subLine}>{salesVsLyLine()}</div>
       </div>
     </section>
   );
