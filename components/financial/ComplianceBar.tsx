@@ -212,60 +212,70 @@ export default function ComplianceBar({ insights }: ComplianceBarProps) {
   const salesActual = insights.salesActual;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-      {/* Payroll % with trend dot + £ line */}
-      <StatCard
-        title="Payroll %"
-        valuePct={insights.payrollPct || 0}
-        ok={payrollOk}
-        targetText={`Target ≤ ${PAYROLL_TARGET}%`}
-        weekLabel={insights.wkLabel || "—"}
-        labelOk="On target"
-        labelNotOk="Off target"
-        costLine={buildCostLine(insights.payrollPct, salesActual)}
-        showTrendDot
-        trendColor={trendColor}
-        trendLabel={trendLabel}
-      />
+    <div className="space-y-2">
+      {/* cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Payroll % with trend dot + £ line */}
+        <StatCard
+          title="Payroll %"
+          valuePct={insights.payrollPct || 0}
+          ok={payrollOk}
+          targetText={`Target ≤ ${PAYROLL_TARGET}%`}
+          weekLabel={insights.wkLabel || "—"}
+          labelOk="On target"
+          labelNotOk="Off target"
+          costLine={buildCostLine(insights.payrollPct, salesActual)}
+          showTrendDot
+          trendColor={trendColor}
+          trendLabel={trendLabel}
+        />
 
-      {/* Food % with £ line */}
-      <StatCard
-        title="Food %"
-        valuePct={insights.foodPct || 0}
-        ok={foodOk}
-        targetText={`Target ≤ ${FOOD_TARGET}%`}
-        weekLabel={insights.wkLabel || "—"}
-        labelOk="On target"
-        labelNotOk="Off target"
-        costLine={buildCostLine(insights.foodPct, salesActual)}
-      />
+        {/* Food % with £ line */}
+        <StatCard
+          title="Food %"
+          valuePct={insights.foodPct || 0}
+          ok={foodOk}
+          targetText={`Target ≤ ${FOOD_TARGET}%`}
+          weekLabel={insights.wkLabel || "—"}
+          labelOk="On target"
+          labelNotOk="Off target"
+          costLine={buildCostLine(insights.foodPct, salesActual)}
+        />
 
-      {/* Drink % with £ line */}
-      <StatCard
-        title="Drink %"
-        valuePct={insights.drinkPct || 0}
-        ok={drinkOk}
-        targetText={`Target ≤ ${DRINK_TARGET}%`}
-        weekLabel={insights.wkLabel || "—"}
-        labelOk="On target"
-        labelNotOk="Off target"
-        costLine={buildCostLine(insights.drinkPct, salesActual)}
-      />
+        {/* Drink % with £ line */}
+        <StatCard
+          title="Drink %"
+          valuePct={insights.drinkPct || 0}
+          ok={drinkOk}
+          targetText={`Target ≤ ${DRINK_TARGET}%`}
+          weekLabel={insights.wkLabel || "—"}
+          labelOk="On target"
+          labelNotOk="Off target"
+          costLine={buildCostLine(insights.drinkPct, salesActual)}
+        />
 
-      {/* Sales vs LY with £ diff line */}
-      <StatCard
-        title="Sales vs LY"
-        valuePct={insights.salesVsLastYearPct || 0}
-        ok={lyOk}
-        targetText={`Target ≥ ${LY_TARGET}%`}
-        weekLabel={insights.wkLabel || "—"}
-        labelOk="On target"
-        labelNotOk="Below LY"
-        extraLine={buildSalesVsLyLine(
-          insights.salesVsLastYearPct,
-          salesActual
-        )}
-      />
+        {/* Sales vs LY with £ diff line */}
+        <StatCard
+          title="Sales vs LY"
+          valuePct={insights.salesVsLastYearPct || 0}
+          ok={lyOk}
+          targetText={`Target ≥ ${LY_TARGET}%`}
+          weekLabel={insights.wkLabel || "—"}
+          labelOk="On target"
+          labelNotOk="Below LY"
+          extraLine={buildSalesVsLyLine(
+            insights.salesVsLastYearPct,
+            salesActual
+          )}
+        />
+      </div>
+
+      {/* legend */}
+      <p className="text-[11px] text-gray-500">
+        <span className="font-semibold text-gray-700">Payroll trend dot</span>:{" "}
+        green = ≤1 pt over (or under) target • amber = 1–2 pts over target • red
+        = &gt;2 pts over target, based on the last 4 completed weeks.
+      </p>
     </div>
   );
 }
