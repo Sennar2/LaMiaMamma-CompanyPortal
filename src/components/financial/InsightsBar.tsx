@@ -1,69 +1,175 @@
+// src/components/financial/InsightsBar.tsx
+
 import React from "react";
 
-type InsightsBarProps = {
-  insights: {
-    wkLabel: string;
-    salesActual: number;
-    salesBudget: number;
-    salesVar: number;
-    salesVarPct: number;
-    payrollPct: number;
-    avgPayrollVar4w: number;
-    currentWeekLabel: string; // e.g. "W44"
-  } | null;
-  payrollTarget: number;
-  currentWeekNow: string; // from parent (same as insights.currentWeekLabel basically)
+type InsightsShape = {
+  wkLabel: string; // e.g. "W48"
+  salesActual: number;
+  salesBudget: number;
+  salesVar: number;
+  salesVarPct: number;
+  payrollPct: number;
+  foodPct: number;
+  drinkPct: number;
+  salesVsLastYearPct: number;
+  avgPayrollVar4w: number;
+  currentWeekLabel?: string;
 };
 
-function formatMoney(n: number | undefined | null) {
-  if (n === undefined || n === null || isNaN(Number(n))) return "£0";
-  return "£" + Number(n).toLocaleString();
-}
-
-function formatPct(n: number | undefined | null) {
-  if (n === undefined || n === null || isNaN(Number(n))) return "0.0%";
-  return Number(n).toFixed(1) + "%";
-}
+type InsightsBarProps = {
+  insights: InsightsShape | null;
+  payrollTarget: number;
+  currentWeekNow: string;
+};
 
 export default function InsightsBar({
   insights,
   payrollTarget,
   currentWeekNow,
 }: InsightsBarProps) {
-  if (!insights) {
-    // if we have no data yet, show skeleton-ish placeholders
+  // helpers
+  function formatCurrency(val: number | undefined | null) {
+    if (val == null || Number.isNaN(val)) return "£0";
+    const abs = Math.abs(Number(val));
     return (
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr",
-          gap: "16px",
-          marginTop: "8px",
-        }}
-      >
-        <div
-          style={{
-            background:
-              "linear-gradient(to bottom right, #ffffff, #f9fafb)",
-            border: "1px solid #e5e7eb",
-            borderRadius: "12px",
-            padding: "16px 20px",
-            minHeight: "140px",
-            boxShadow:
-              "0 24px 40px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.03)",
-            color: "#6b7280",
-            fontSize: "13px",
-            lineHeight: 1.4,
-            fontStyle: "italic",
-          }}
-        >
-          Loading last week…
-        </div>
-      </div>
+      "£" +
+      abs.toLocaleString("en-GB", {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 0,
+      })
     );
   }
 
-  // pull useful numbers
+  function percentText(val: number | undefined | null) {
+    if (val == null || Number.isNaN(val)) return "0.0%";
+    return `${val.toFixed(1)}%`;
+  }
+
+  // layout styles
+  const containerStyle: React.CSSProperties = {
+    maxWidth: "1280px",
+    margin: "0 auto",
+    display: "grid",
+    gridTemplateColumns: "minmax(0,1.1fr) minmax(0,1.6fr)",
+    gap: "1rem",
+    fontFamily: "Inter, system-ui, sans-serif",
+  };
+
+  const cardBase: React.CSSProperties = {
+    backgroundColor: "#ffffff",
+    borderRadius: "0.9rem",
+    boxShadow:
+      "0 24px 40px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)",
+    padding: "1.1rem 1.4rem",
+    minHeight: "120px",
+  };
+
+  const smallLabel: React.CSSProperties = {
+    fontSize: "0.75rem",
+    fontWeight: 500,
+    color: "#6b7280",
+    marginBottom: "0.35rem",
+  };
+
+  const bigWeek: React.CSSProperties = {
+    fontSize: "2rem",
+    fontWeight: 700,
+    letterSpacing: "0.02em",
+    color: "#111827",
+  };
+
+  const subtleText: React.CSSProperties = {
+    marginTop: "0.4rem",
+    fontSize: "0.8rem",
+    color: "#6b7280",
+  };
+
+  const headerRow: React.CSSProperties = {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: "0.5rem",
+  };
+
+  const titleStyle: React.CSSProperties = {
+    fontSize: "0.85rem",
+    fontWeight: 600,
+    color: "#111827",
+  };
+
+  const weekLabel: React.CSSProperties = {
+    fontSize: "0.75rem",
+    padding: "0.2rem 0.6rem",
+    borderRadius: "999px",
+    backgroundColor: "#f3f4f6",
+    color: "#374151",
+  };
+
+  const bigNumberBase: React.CSSProperties = {
+    fontSize: "1.25rem",
+    fontWeight: 700,
+    lineHeight: 1.1,
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+  };
+
+  const bigNumberGood: React.CSSProperties = {
+    ...bigNumberBase,
+    color: "#16a34a",
+  };
+
+  const bigNumberBad: React.CSSProperties = {
+    ...bigNumberBase,
+    color: "#dc2626",
+  };
+
+  const pillBase: React.CSSProperties = {
+    fontSize: "0.65rem",
+    fontWeight: 600,
+    padding: "0.15rem 0.6rem",
+    borderRadius: "999px",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+  };
+
+  const pillGood: React.CSSProperties = {
+    ...pillBase,
+    backgroundColor: "rgba(22,163,74,0.08)",
+    color: "#15803d",
+  };
+
+  const pillBad: React.CSSProperties = {
+    ...pillBase,
+    backgroundColor: "rgba(220,38,38,0.06)",
+    color: "#b91c1c",
+  };
+
+  const lineText: React.CSSProperties = {
+    marginTop: "0.25rem",
+    fontSize: "0.8rem",
+    color: "#4b5563",
+  };
+
+  const mutedLine: React.CSSProperties = {
+    marginTop: "0.2rem",
+    fontSize: "0.75rem",
+    color: "#6b7280",
+  };
+
+  // no insights yet: show only current week card
+  if (!insights) {
+    return (
+      <section style={containerStyle}>
+        <div style={cardBase}>
+          <div style={smallLabel}>Current Week</div>
+          <div style={bigWeek}>{currentWeekNow}</div>
+          <div style={subtleText}>Today&apos;s trading period</div>
+        </div>
+      </section>
+    );
+  }
+
   const {
     wkLabel,
     salesActual,
@@ -73,224 +179,108 @@ export default function InsightsBar({
     payrollPct,
   } = insights;
 
-  const payrollColour = payrollPct > payrollTarget ? "#dc2626" : "#111827";
+  const isAboveBudget = salesVar >= 0;
+  const salesVarAbs = Math.abs(salesVar);
+
+  const payrollOk = payrollPct <= payrollTarget;
 
   return (
-    <section
-      style={{
-        display: "grid",
-        gridTemplateColumns: "1fr",
-        gap: "16px",
-      }}
-    >
-      {/* On desktop we want 2 columns */}
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-          @media(min-width:768px){
-            .insightsGridTwoCols{
-              grid-template-columns: 1fr 1fr;
-            }
-          }
-        `,
-        }}
-      />
-      <div className="insightsGridTwoCols" style={{ display: "grid", gap: "16px" }}>
-        {/* LEFT CARD - Current Week */}
-        <div
-          style={{
-            background:
-              "linear-gradient(to bottom right, #ffffff, #f9fafb)",
-            border: "1px solid #e5e7eb",
-            borderRadius: "12px",
-            padding: "20px",
-            minHeight: "160px",
-            boxShadow:
-              "0 24px 40px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.03)",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "12px",
-              fontWeight: 500,
-              color: "#6b7280",
-              lineHeight: 1.2,
-              marginBottom: "8px",
-            }}
-          >
-            Current Week
-          </div>
+    <section style={containerStyle}>
+      {/* LEFT: current week */}
+      <div style={cardBase}>
+        <div style={smallLabel}>Current Week</div>
+        <div style={bigWeek}>{currentWeekNow}</div>
+        <div style={subtleText}>Today&apos;s trading period</div>
+      </div>
 
-          <div
-            style={{
-              fontSize: "28px",
-              fontWeight: 600,
-              color: "#111827",
-              lineHeight: 1.2,
-            }}
-          >
-            {currentWeekNow}
+      {/* RIGHT: last week results */}
+      <div style={cardBase}>
+        <div style={headerRow}>
+          <div>
+            <div style={titleStyle}>Last Week Results</div>
+            <div
+              style={{
+                marginTop: "0.1rem",
+                fontSize: "0.75rem",
+                color: "#6b7280",
+              }}
+            >
+              Sales vs Budget &amp; Payroll
+            </div>
           </div>
-
-          <div
-            style={{
-              fontSize: "12px",
-              color: "#6b7280",
-              lineHeight: 1.4,
-              marginTop: "12px",
-            }}
-          >
-            Today&apos;s trading period
-          </div>
-
-          {/* 4-week payroll trend indicator (colour dot logic not in parent yet,
-              but we COULD surface avgPayrollVar4w here later if you want) */}
+          <div style={weekLabel}>{wkLabel}</div>
         </div>
 
-        {/* RIGHT CARD - Last Week Results */}
-        <div
-          style={{
-            backgroundColor: "#fff",
-            border: "1px solid #e5e7eb",
-            borderRadius: "12px",
-            padding: "20px",
-            minHeight: "160px",
-            boxShadow:
-              "0 24px 40px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.03)",
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "space-between",
-          }}
-        >
-          {/* header row */}
+        {/* Sales vs Budget block */}
+        <div style={{ marginBottom: "0.6rem" }}>
           <div
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              rowGap: "4px",
-              marginBottom: "8px",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              color: "#b91c1c",
+              marginBottom: "0.1rem",
             }}
           >
-            <div
-              style={{
-                fontSize: "12px",
-                fontWeight: 500,
-                color: "#6b7280",
-                lineHeight: 1.2,
-              }}
-            >
-              Last Week Results
-            </div>
-
-            <div
-              style={{
-                fontSize: "12px",
-                color: "#6b7280",
-                lineHeight: 1.2,
-                fontWeight: 500,
-              }}
-            >
-              {wkLabel}
-            </div>
+            Sales vs Budget
           </div>
 
-          {/* Sales vs Budget */}
-          <div style={{ marginBottom: "12px" }}>
-            <div
-              style={{
-                fontSize: "12px",
-                fontWeight: 500,
-                color: "#374151",
-                lineHeight: 1.3,
-              }}
-            >
-              Sales vs Budget
-            </div>
-
-            <div
-              style={{
-                fontSize: "16px",
-                fontWeight: 600,
-                lineHeight: 1.3,
-                color: salesVar < 0 ? "#dc2626" : "#16a34a",
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "baseline",
-                columnGap: "6px",
-                rowGap: "2px",
-              }}
-            >
-              <span>{formatMoney(salesVar)}</span>
-              <span
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  lineHeight: 1.3,
-                }}
-              >
-                ({salesVarPct.toFixed(1)}%)
-              </span>
-            </div>
-
-            <div
-              style={{
-                fontSize: "12px",
-                color: "#6b7280",
-                lineHeight: 1.4,
-                marginTop: "4px",
-              }}
-            >
-              Actual {formatMoney(salesActual)} vs Budget{" "}
-              {formatMoney(salesBudget)}
-            </div>
+          <div style={isAboveBudget ? bigNumberGood : bigNumberBad}>
+            <span>
+              {salesVar === 0
+                ? "£0"
+                : `${isAboveBudget ? "+" : "-"}${formatCurrency(
+                    salesVarAbs
+                  )}`}
+            </span>
+            <span style={isAboveBudget ? pillGood : pillBad}>
+              {isAboveBudget ? "Above budget" : "Below budget"}
+            </span>
           </div>
 
-          {/* Payroll % */}
-          <div>
-            <div
-              style={{
-                fontSize: "12px",
-                fontWeight: 500,
-                color: "#374151",
-                lineHeight: 1.3,
-              }}
-            >
-              Payroll %
-            </div>
+          <div style={lineText}>
+            {salesVarPct === 0
+              ? "On budget"
+              : `${percentText(Math.abs(salesVarPct))} ${
+                  salesVarPct > 0 ? "over" : "under"
+                } budget`}
+          </div>
 
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "baseline",
-                columnGap: "6px",
-                rowGap: "2px",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "20px",
-                  fontWeight: 600,
-                  lineHeight: 1.2,
-                  color: payrollColour,
-                }}
-              >
-                {formatPct(payrollPct)}
-              </span>
-              <span
-                style={{
-                  fontSize: "12px",
-                  color: "#6b7280",
-                  lineHeight: 1.3,
-                }}
-              >
-                Target ≤ {payrollTarget}%
-              </span>
-            </div>
+          <div style={mutedLine}>
+            Actual {formatCurrency(salesActual)} vs Budget{" "}
+            {formatCurrency(salesBudget)}
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div
+          style={{
+            borderTop: "1px dashed #e5e7eb",
+            margin: "0.4rem 0 0.5rem",
+          }}
+        />
+
+        {/* Payroll block */}
+        <div>
+          <div
+            style={{
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              color: "#374151",
+              marginBottom: "0.1rem",
+            }}
+          >
+            Payroll %
+          </div>
+
+          <div style={payrollOk ? bigNumberGood : bigNumberBad}>
+            <span>{percentText(payrollPct)}</span>
+            <span style={payrollOk ? pillGood : pillBad}>
+              {payrollOk ? "On target" : "Off target"}
+            </span>
+          </div>
+
+          <div style={mutedLine}>
+            Target ≤ {payrollTarget}% – based on last completed week
           </div>
         </div>
       </div>
