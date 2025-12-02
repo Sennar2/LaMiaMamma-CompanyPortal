@@ -7,6 +7,12 @@ export default function RankingTable({
   rankingPeriodData,
   rankingView,
   setRankingView,
+  weekOptions,
+  selectedWeek,
+  onWeekChange,
+  periodOptions,
+  selectedPeriod,
+  onPeriodChange,
   payrollTarget,
   foodTarget,
   drinkTarget,
@@ -49,7 +55,7 @@ export default function RankingTable({
           padding: "1rem 1rem 1.25rem",
         }}
       >
-        {/* Header row with title + toggle + subtitle */}
+        {/* Header row with title + toggle + pickers */}
         <div
           style={{
             marginBottom: "0.75rem",
@@ -84,60 +90,113 @@ export default function RankingTable({
             </div>
           </div>
 
-          {/* Toggle inside the card */}
           <div
             style={{
-              display: "inline-flex",
-              borderRadius: "999px",
-              border: "1px solid #e5e7eb",
-              backgroundColor: "#f9fafb",
-              padding: "2px",
-              gap: "2px",
-              fontSize: "0.75rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem",
             }}
           >
-            <button
-              type="button"
-              onClick={() => setRankingView("week")}
+            {/* toggle */}
+            <div
               style={{
-                padding: "0.25rem 0.7rem",
+                display: "inline-flex",
                 borderRadius: "999px",
-                border: "none",
-                cursor: "pointer",
-                fontWeight: 500,
-                backgroundColor:
-                  rankingView === "week" ? "#111827" : "transparent",
-                color: rankingView === "week" ? "#fff" : "#4b5563",
-                boxShadow:
-                  rankingView === "week"
-                    ? "0 6px 12px rgba(0,0,0,0.25)"
-                    : "none",
-                transition: "all 0.15s ease",
+                border: "1px solid #e5e7eb",
+                backgroundColor: "#f9fafb",
+                padding: "2px",
+                gap: "2px",
+                fontSize: "0.75rem",
               }}
             >
-              Last week
-            </button>
-            <button
-              type="button"
-              onClick={() => setRankingView("period")}
-              style={{
-                padding: "0.25rem 0.7rem",
-                borderRadius: "999px",
-                border: "none",
-                cursor: "pointer",
-                fontWeight: 500,
-                backgroundColor:
-                  rankingView === "period" ? "#111827" : "transparent",
-                color: rankingView === "period" ? "#fff" : "#4b5563",
-                boxShadow:
-                  rankingView === "period"
-                    ? "0 6px 12px rgba(0,0,0,0.25)"
-                    : "none",
-                transition: "all 0.15s ease",
-              }}
-            >
-              Last period
-            </button>
+              <button
+                type="button"
+                onClick={() => setRankingView("week")}
+                style={{
+                  padding: "0.25rem 0.7rem",
+                  borderRadius: "999px",
+                  border: "none",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                  backgroundColor:
+                    rankingView === "week" ? "#111827" : "transparent",
+                  color: rankingView === "week" ? "#fff" : "#4b5563",
+                  boxShadow:
+                    rankingView === "week"
+                      ? "0 6px 12px rgba(0,0,0,0.25)"
+                      : "none",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                Last week
+              </button>
+              <button
+                type="button"
+                onClick={() => setRankingView("period")}
+                style={{
+                  padding: "0.25rem 0.7rem",
+                  borderRadius: "999px",
+                  border: "none",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                  backgroundColor:
+                    rankingView === "period" ? "#111827" : "transparent",
+                  color: rankingView === "period" ? "#fff" : "#4b5563",
+                  boxShadow:
+                    rankingView === "period"
+                      ? "0 6px 12px rgba(0,0,0,0.25)"
+                      : "none",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                Last period
+              </button>
+            </div>
+
+            {/* week / period picker */}
+            {rankingView === "week" && weekOptions?.length > 0 && (
+              <select
+                value={selectedWeek}
+                onChange={(e) => onWeekChange(e.target.value)}
+                style={{
+                  borderRadius: "999px",
+                  border: "1px solid #e5e7eb",
+                  padding: "0.25rem 0.7rem",
+                  fontSize: "0.75rem",
+                  backgroundColor: "#ffffff",
+                  color: "#374151",
+                  outline: "none",
+                }}
+              >
+                {weekOptions.map((w) => (
+                  <option key={w} value={w}>
+                    {w}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {rankingView === "period" && periodOptions?.length > 0 && (
+              <select
+                value={selectedPeriod}
+                onChange={(e) => onPeriodChange(e.target.value)}
+                style={{
+                  borderRadius: "999px",
+                  border: "1px solid #e5e7eb",
+                  padding: "0.25rem 0.7rem",
+                  fontSize: "0.75rem",
+                  backgroundColor: "#ffffff",
+                  color: "#374151",
+                  outline: "none",
+                }}
+              >
+                {periodOptions.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
