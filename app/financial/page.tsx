@@ -630,16 +630,17 @@ export default function FinancialPage() {
       </div>
 
       {/* CHARTS */}
-      {!loadingData && !fetchError && (
+     
+           {!loadingData && !fetchError && (
         <ChartSection
           activeTab={activeTab}
           filteredData={filteredData}
           chartConfig={chartConfig}
-          yTickFormatter={yTickFormatter}
-          tooltipFormatter={tooltipFormatter}
           CSVLink={CSVLink}
         />
       )}
+
+
 
       {/* Space before ranking */}
       <div className="h-4 md:h-6" />
