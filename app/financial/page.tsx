@@ -754,39 +754,10 @@ export default function FinancialPage() {
       {/* Space before ing */}
       <div className="h-4 md:h-6" />
 
-      {/* RANKING: last week / last period toggle */}
+
+      {/* RANKING: last week / last period (toggle lives inside the card) */}
       {['admin', 'operation', 'ops'].includes(role) &&
         (rankingWeekData.length > 0 || rankingPeriodData.length > 0) && (
-          <section className="space-y-2">
-            <div className="flex justify-end">
-              <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setRankingView('week')}
-                  className={`px-3 py-1 rounded-full ${
-                    rankingView === 'week'
-                      ? 'bg-gray-900 text-white shadow'
-                      : 'bg-transparent text-gray-700'
-                  }`}
-                >
-                  Last week
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRankingView('period')}
-                  className={`px-3 py-1 rounded-full ${
-                    rankingView === 'period'
-                      ? 'bg-gray-900 text-white shadow'
-                      : 'bg-transparent text-gray-700'
-                  }`}
-                >
-                  Last period
-                </button>
-              </div>
-            </div>
-
-                  {/* RANKING: last week / last period with toggle inside the card */}
-    
           <RankingTable
             rankingWeekData={rankingWeekData}
             rankingPeriodData={rankingPeriodData}
@@ -798,10 +769,6 @@ export default function FinancialPage() {
           />
         )}
 
-      
-
       {/* extra bottom space so it doesn't crush the global footer */}
       <div className="h-10" />
-    </main>
-  );
-}
+
