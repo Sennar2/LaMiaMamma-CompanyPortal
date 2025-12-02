@@ -427,14 +427,37 @@ export default function FinancialPage() {
         setRankingPeriodData([]);
         return;
       }
+
       try {
         const weekResults: any[] = [];
         const periodResults: any[] = [];
 
+        // ---- last completed WEEK (same as before) ----
         const currentWeekNum = getISOWeek();
         const snapshotWeekNum =
           currentWeekNum - 1 <= 0 ? currentWeekNum : currentWeekNum - 1;
 
+        // ---- determine last COMPLETED PERIOD (one period BEFORE the period that contains snapshotWeekNum) ----
+        const periodOrder = Array.from(
+          new Set(WEEK_TO_PERIOD_QUARTER.map((m) => m.period))
+        ); // ["P1","P2",...,"P12"]
+
+        const snapshotEntry = WEEK_TO_PERIOD_QUARTER.find((x) => {
+          const wNum = parseInt(x.week.replace(/[^\d]/g, ''), 10);
+          return wNum === snapshotWeekNum;
+        });
+
+        // period that contains the snapshot week (current period)
+        const currentPeriod = snapshotEntry?.period || periodOrder[periodOrder.length - 1];
+
+        // last *completed* period = one step before currentPeriod
+        let lastCompletedPeriod = currentPeriod;
+        const idx = periodOrder.indexOf(currentPeriod);
+        if (idx > 0) {
+          lastCompletedPeriod = periodOrder[idx - 1];
+        }
+
+        // ---- fetch all store sheets once ----
         const all = await Promise.all(
           STORE_LOCATIONS.map(async (loc) => {
             const rows = await fetchTab(loc);
@@ -454,7 +477,7 @@ export default function FinancialPage() {
 
           if (!decorated.length) continue;
 
-          // ----- LAST COMPLETED WEEK (same logic as before) -----
+          // ----- LAST COMPLETED WEEK (unchanged) -----
           let latest = decorated.find(
             (r: any) => r.__weekNum === snapshotWeekNum && rowHasData(r)
           );
@@ -493,7 +516,7 @@ export default function FinancialPage() {
             salesVar,
           });
 
-          // ----- LAST COMPLETED PERIOD (aggregate up to snapshot week) -----
+          // ----- LAST COMPLETED PERIOD (aggregate only that period) -----
           const withPeriod = decorated.map((r: any) => {
             const wLabel = String(r.Week || '').trim();
             const match = WEEK_TO_PERIOD_QUARTER.find((x) => x.week === wLabel);
@@ -503,35 +526,13 @@ export default function FinancialPage() {
             };
           });
 
-          const eligible = withPeriod.filter(
+          // only rows from lastCompletedPeriod and up to snapshotWeekNum
+          const periodRows = withPeriod.filter(
             (r: any) =>
-              r.Period !== 'P?' &&
-              rowHasData(r) &&
-              r.__weekNum <= snapshotWeekNum
-          );
-          if (!eligible.length) continue;
-
-          const groupedByPeriod = eligible.reduce<Record<string, any[]>>(
-            (acc, row: any) => {
-              if (!acc[row.Period]) acc[row.Period] = [];
-              acc[row.Period].push(row);
-              return acc;
-            },
-            {}
+              r.Period === lastCompletedPeriod && r.__weekNum <= snapshotWeekNum
           );
 
-          const periodKeys = Object.keys(groupedByPeriod);
-          if (!periodKeys.length) continue;
-
-          periodKeys.sort((a, b) => {
-            const na = parseInt(a.replace(/[^\d]/g, ''), 10) || 0;
-            const nb = parseInt(b.replace(/[^\d]/g, ''), 10) || 0;
-            return na - nb;
-          });
-          const lastPeriodKey = periodKeys[periodKeys.length - 1];
-          const periodRows = groupedByPeriod[lastPeriodKey];
-
-          if (!periodRows?.length) continue;
+          if (!periodRows.length) continue;
 
           let salesActualTotal = 0;
           let salesBudgetTotal = 0;
@@ -572,7 +573,7 @@ export default function FinancialPage() {
 
           periodResults.push({
             location: loc,
-            week: lastPeriodKey, // "P3", "P12", etc
+            week: lastCompletedPeriod, // e.g. "P11"
             payrollPct: payrollPctPeriod,
             foodPct: foodPctPeriod,
             drinkPct: drinkPctPeriod,
@@ -591,6 +592,7 @@ export default function FinancialPage() {
       }
     })();
   }, [role]);
+
 
 
   // 10) Chart config (preserves Theo lines)
