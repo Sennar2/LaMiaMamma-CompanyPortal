@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { CSVLink } from "react-csv";
 
 // IMPORTANT: adjust this import path if your supabase client lives somewhere else.
-import { supabase } from "../../supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 
 
 import FinancialHeader from "../../src/components/financial/FinancialHeader";
