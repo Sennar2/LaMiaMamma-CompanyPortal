@@ -17,7 +17,8 @@ export default function ChartSection({
   chartConfig,
   CSVLink,
 }) {
-  const lines = chartConfig[activeTab] || [];
+  // base line config coming from the parent
+  const baseLines = chartConfig[activeTab] || [];
 
   // "currency" (£) or "percent" (%)
   const [unit, setUnit] = React.useState("currency");
@@ -37,57 +38,73 @@ export default function ChartSection({
 
   const formatPercent = (value) => {
     if (value == null || isNaN(Number(value))) return "";
-    const pct = Number(value); // already a % number (e.g. 95.3)
+    const pct = Number(value); // can be positive or negative
     return pct.toFixed(1) + "%";
   };
 
-  // Build a copy of filteredData where each series is expressed
-  // as % of its budget for the active tab.
+  const safeNum = (v) =>
+    v == null || isNaN(Number(v)) ? 0 : Number(v);
+
+  /**
+   * Build a copy of filteredData where:
+   * - Sales (percent mode):
+   *    Sales_vsBudgetPct    = (Actual - Budget) / Budget * 100
+   *    Sales_vsLastYearPct  = (Actual - LastYear) / LastYear * 100
+   *
+   * - Payroll / Food / Drink (percent mode):
+   *    Actual, Budget = value / Theo * 100
+   *    Theo           = 100
+   */
   const toPercentData = (rows, tab) => {
     return rows.map((row) => {
       const out = { ...row };
 
-      const safeNum = (v) => (v == null || isNaN(Number(v)) ? 0 : Number(v));
-
       if (tab === "Sales") {
+        const actual = safeNum(row.Sales_Actual);
         const budget = safeNum(row.Sales_Budget);
-        if (budget > 0) {
-          out.Sales_Actual = (safeNum(row.Sales_Actual) / budget) * 100;
-          out.Sales_Budget = 100;
-          out.Sales_LastYear = (safeNum(row.Sales_LastYear) / budget) * 100;
-        } else {
-          out.Sales_Actual = 0;
-          out.Sales_Budget = 0;
-          out.Sales_LastYear = 0;
-        }
+        const lastYear = safeNum(row.Sales_LastYear);
+
+        out.Sales_vsBudgetPct =
+          budget > 0 ? ((actual - budget) / budget) * 100 : 0;
+
+        out.Sales_vsLastYearPct =
+          lastYear > 0 ? ((actual - lastYear) / lastYear) * 100 : 0;
+
+        // We leave Sales_Actual / Sales_Budget / Sales_LastYear
+        // untouched here; we just don't use them in % mode.
       } else if (tab === "Payroll") {
-        const budget = safeNum(row.Payroll_Budget);
-        if (budget > 0) {
-          out.Payroll_Actual = (safeNum(row.Payroll_Actual) / budget) * 100;
-          out.Payroll_Budget = 100;
-          out.Payroll_Theo = (safeNum(row.Payroll_Theo) / budget) * 100;
+        const theo = safeNum(row.Payroll_Theo);
+        if (theo > 0) {
+          out.Payroll_Actual =
+            (safeNum(row.Payroll_Actual) / theo) * 100;
+          out.Payroll_Budget =
+            (safeNum(row.Payroll_Budget) / theo) * 100;
+          out.Payroll_Theo = 100;
         } else {
           out.Payroll_Actual = 0;
           out.Payroll_Budget = 0;
           out.Payroll_Theo = 0;
         }
       } else if (tab === "Food") {
-        const budget = safeNum(row.Food_Budget);
-        if (budget > 0) {
-          out.Food_Actual = (safeNum(row.Food_Actual) / budget) * 100;
-          out.Food_Budget = 100;
-          out.Food_Theo = (safeNum(row.Food_Theo) / budget) * 100;
+        const theo = safeNum(row.Food_Theo);
+        if (theo > 0) {
+          out.Food_Actual = (safeNum(row.Food_Actual) / theo) * 100;
+          out.Food_Budget =
+            (safeNum(row.Food_Budget) / theo) * 100;
+          out.Food_Theo = 100;
         } else {
           out.Food_Actual = 0;
           out.Food_Budget = 0;
           out.Food_Theo = 0;
         }
       } else if (tab === "Drink") {
-        const budget = safeNum(row.Drink_Budget);
-        if (budget > 0) {
-          out.Drink_Actual = (safeNum(row.Drink_Actual) / budget) * 100;
-          out.Drink_Budget = 100;
-          out.Drink_Theo = (safeNum(row.Drink_Theo) / budget) * 100;
+        const theo = safeNum(row.Drink_Theo);
+        if (theo > 0) {
+          out.Drink_Actual =
+            (safeNum(row.Drink_Actual) / theo) * 100;
+          out.Drink_Budget =
+            (safeNum(row.Drink_Budget) / theo) * 100;
+          out.Drink_Theo = 100;
         } else {
           out.Drink_Actual = 0;
           out.Drink_Budget = 0;
@@ -104,6 +121,36 @@ export default function ChartSection({
     unit === "currency"
       ? filteredData
       : toPercentData(filteredData, activeTab);
+
+  // In % mode for Sales we use special lines based on the diff fields
+  let lines;
+  if (unit === "percent" && activeTab === "Sales") {
+    const salesActualLine =
+      baseLines.find((l) => l.key === "Sales_Actual") ||
+      baseLines[0] ||
+      { color: "#4ade80" };
+
+    const lastYearLine =
+      baseLines.find((l) => l.key === "Sales_LastYear") ||
+      baseLines[2] ||
+      { color: "#f97316" };
+
+    lines = [
+      {
+        key: "Sales_vsBudgetPct",
+        color: salesActualLine.color,
+        name: "Actual vs Budget",
+      },
+      {
+        key: "Sales_vsLastYearPct",
+        color: lastYearLine.color,
+        name: "Actual vs Last Year",
+      },
+    ];
+  } else {
+    // default: reuse parent config (Sales in £, Payroll/Food/Drink in £ or % vs Theo)
+    lines = baseLines;
+  }
 
   const yTickFormatter = (value) =>
     unit === "currency" ? formatCurrency(value) : formatPercent(value);
