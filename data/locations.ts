@@ -16,5 +16,5 @@ export const LOCATIONS: LocationOption[] = [
   { id: "la-mia-mamma-hollywood-road", name: "La Mia Mamma - Hollywood Road", plandayDepartmentId: "128790" },
   { id: "la-mia-mamma-notting-hill", name: "La Mia Mamma - Notting Hill", plandayDepartmentId: "128785" },
   { id: "la-vineria", name: "La Vineria", plandayDepartmentId: "128788" },
-  { id: "made-in-italy-kings-road" "made-in-italy-chelsea", name: "Made in Italy - Chelsea", plandayDepartmentId: "128786" }
+  { id: "made-in-italy-kings-road", name: "Made in Italy - Chelsea", plandayDepartmentId: "128786" }
 ];
