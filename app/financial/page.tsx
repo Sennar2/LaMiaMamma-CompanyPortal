@@ -315,7 +315,7 @@ export default function FinancialPage() {
         'Made in Italy (Brand)',
         ...STORE_LOCATIONS,
       ]);
-    } else if (role === 'manager', 'user' && profile.home_location) {
+    }  else if (['manager', 'user'].includes(role) && profile.home_location) {
       setAllowedLocations([profile.home_location]);
     } else {
       setAllowedLocations([]);
