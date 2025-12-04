@@ -301,7 +301,7 @@ export default function FinancialPage() {
 
   // 2) Permission
   const role = (profile?.role || '').toLowerCase();
-  const canView = ['admin', 'operation', 'ops', 'manager'].includes(role);
+  const canView = ['admin', 'operation', 'ops', 'manager', 'user'].includes(role);
 
   // 3) Locations the user can view
   const [allowedLocations, setAllowedLocations] = useState<string[]>([]);
@@ -315,7 +315,7 @@ export default function FinancialPage() {
         'Made in Italy (Brand)',
         ...STORE_LOCATIONS,
       ]);
-    } else if (role === 'manager' && profile.home_location) {
+    } else if (role === 'manager', 'user' && profile.home_location) {
       setAllowedLocations([profile.home_location]);
     } else {
       setAllowedLocations([]);
