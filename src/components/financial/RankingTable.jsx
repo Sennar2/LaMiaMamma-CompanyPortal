@@ -16,25 +16,92 @@ export default function RankingTable({
   payrollTarget,
   foodTarget,
   drinkTarget,
+  // optional: click a row to jump to that location
+  onRowClick,
 }) {
   const rankingData =
     rankingView === "period" ? rankingPeriodData : rankingWeekData;
 
   if (!rankingData || rankingData.length === 0) return null;
 
-  function colorFor(val, target, inverse = false) {
-    // inverse=false => good if val <= target
-    // inverse=true  => good if val >= target
-    const ok = inverse ? val >= target : val <= target;
+  // local toggle: show only % or % + £
+  const [valueView, setValueView] = React.useState("both"); // "percent" | "both"
+
+  // Payroll traffic light:
+  // diff = payrollPct - target
+  // diff <= 1       => GREEN
+  // 1 < diff <= 2   => AMBER
+  // diff > 2        => RED
+  function colorForPayroll(pct, target) {
+    if (pct == null || isNaN(pct)) {
+      return { color: "#6b7280" };
+    }
+    const diff = pct - target;
+    if (diff <= 1) return { color: "#059669" }; // green
+    if (diff <= 2) return { color: "#f59e0b" }; // amber
+    return { color: "#dc2626" }; // red
+  }
+
+  // Food / Drink: good if ≤ target
+  function colorForThreshold(val, target) {
+    if (val == null || isNaN(val)) {
+      return { color: "#6b7280" };
+    }
+    const ok = val <= target;
     return {
       color: ok ? "#059669" : "#dc2626",
     };
   }
 
+  // Sales vs Budget: good if ≥ 0
+  function colorForSalesVar(val) {
+    if (val == null || isNaN(val)) {
+      return { color: "#6b7280" };
+    }
+    const ok = val >= 0;
+    return {
+      color: ok ? "#059669" : "#dc2626",
+    };
+  }
+
+  function fmtMoney(val) {
+    if (val == null || isNaN(val)) return "£–";
+    const abs = Math.round(Math.abs(val));
+    return "£" + abs.toLocaleString("en-GB");
+  }
+
+  function fmtSalesVarMoney(val) {
+    if (val == null || isNaN(val)) return "£0";
+    const sign = val >= 0 ? "+" : "−";
+    const abs = Math.round(Math.abs(val));
+    return `${sign}£${abs.toLocaleString("en-GB")}`;
+  }
+
+  function fmtPct(val) {
+    if (val == null || isNaN(val)) return "–";
+    return `${val.toFixed(1)}%`;
+  }
+
+  function fmtSignedPct(val) {
+    if (val == null || isNaN(val)) return "–";
+    const sign = val >= 0 ? "+" : "";
+    return `${sign}${val.toFixed(1)}%`;
+  }
+
+  const activeLabel =
+    rankingView === "period" ? selectedPeriod : selectedWeek;
+
   const title =
     rankingView === "period"
-      ? "Site Ranking (last period)"
-      : "Site Ranking (last week)";
+      ? `Site Ranking – ${activeLabel || "Period"}`
+      : `Site Ranking – ${activeLabel || "Week"}`;
+
+  const subtitle =
+    rankingView === "period"
+      ? "Showing selected period. Sorted by highest Payroll % (worst at the top)."
+      : "Showing selected week. Sorted by highest Payroll % (worst at the top).";
+
+  const rowsClickable = typeof onRowClick === "function";
 
   return (
     <div
@@ -55,7 +122,7 @@ export default function RankingTable({
           padding: "1rem 1rem 1.25rem",
         }}
       >
-        {/* Header row with title + toggle + pickers */}
+        {/* Header row with title + toggle + pickers + view mode */}
         <div
           style={{
             marginBottom: "0.75rem",
@@ -86,7 +153,7 @@ export default function RankingTable({
                 marginTop: "0.15rem",
               }}
             >
-              Sorted by highest Payroll %
+              {subtitle}
             </div>
           </div>
 
@@ -95,9 +162,79 @@ export default function RankingTable({
               display: "flex",
               alignItems: "center",
               gap: "0.75rem",
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
             }}
           >
-            {/* toggle */}
+            {/* View: % only / % + £ */}
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.3rem",
+                fontSize: "0.7rem",
+                color: "#6b7280",
+              }}
+            >
+              <span>View</span>
+              <div
+                style={{
+                  display: "inline-flex",
+                  borderRadius: "999px",
+                  border: "1px solid #e5e7eb",
+                  backgroundColor: "#f9fafb",
+                  padding: "2px",
+                  gap: "2px",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setValueView("percent")}
+                  style={{
+                    padding: "0.15rem 0.6rem",
+                    borderRadius: "999px",
+                    border: "none",
+                    cursor: "pointer",
+                    fontWeight: 500,
+                    fontSize: "0.7rem",
+                    backgroundColor:
+                      valueView === "percent" ? "#111827" : "transparent",
+                    color: valueView === "percent" ? "#fff" : "#4b5563",
+                    boxShadow:
+                      valueView === "percent"
+                        ? "0 4px 8px rgba(0,0,0,0.25)"
+                        : "none",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  % only
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setValueView("both")}
+                  style={{
+                    padding: "0.15rem 0.6rem",
+                    borderRadius: "999px",
+                    border: "none",
+                    cursor: "pointer",
+                    fontWeight: 500,
+                    fontSize: "0.7rem",
+                    backgroundColor:
+                      valueView === "both" ? "#111827" : "transparent",
+                    color: valueView === "both" ? "#fff" : "#4b5563",
+                    boxShadow:
+                      valueView === "both"
+                        ? "0 4px 8px rgba(0,0,0,0.25)"
+                        : "none",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  % + £
+                </button>
+              </div>
+            </div>
+
+            {/* week/period toggle */}
             <div
               style={{
                 display: "inline-flex",
@@ -213,7 +350,7 @@ export default function RankingTable({
               borderCollapse: "collapse",
               fontSize: "0.8rem",
               lineHeight: 1.4,
-              minWidth: "600px",
+              minWidth: "700px",
             }}
           >
             <thead>
@@ -241,7 +378,7 @@ export default function RankingTable({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  Payroll %
+                  Payroll
                   <span
                     style={{
                       fontWeight: 400,
@@ -249,7 +386,7 @@ export default function RankingTable({
                     }}
                   >
                     {" "}
-                    (≤ {payrollTarget}%)
+                    (Target {payrollTarget}%)
                   </span>
                 </th>
                 <th
@@ -259,7 +396,7 @@ export default function RankingTable({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  Food %
+                  Food
                   <span
                     style={{
                       fontWeight: 400,
@@ -277,7 +414,7 @@ export default function RankingTable({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  Drink %
+                  Drink
                   <span
                     style={{
                       fontWeight: 400,
@@ -302,10 +439,20 @@ export default function RankingTable({
 
             <tbody>
               {rankingData.map((row, idx) => {
-                const payrollStyle = colorFor(row.payrollPct, payrollTarget);
-                const foodStyle = colorFor(row.foodPct, foodTarget);
-                const drinkStyle = colorFor(row.drinkPct, drinkTarget);
-                const salesStyle = colorFor(row.salesVar, 0, true); // ≥0 is good
+                const payrollStyle = colorForPayroll(
+                  row.payrollPct,
+                  payrollTarget
+                );
+                const foodStyle = colorForThreshold(row.foodPct, foodTarget);
+                const drinkStyle = colorForThreshold(
+                  row.drinkPct,
+                  drinkTarget
+                );
+                const salesStyle = colorForSalesVar(row.salesVar);
+
+                const payrollValue = row.payrollValue;
+                const foodValue = row.foodValue;
+                const drinkValue = row.drinkValue;
 
                 return (
                   <tr
@@ -316,8 +463,15 @@ export default function RankingTable({
                         idx === 0
                           ? "rgba(220,38,38,0.03)"
                           : "transparent",
+                      cursor: rowsClickable ? "pointer" : "default",
                     }}
+                    onClick={
+                      rowsClickable
+                        ? () => onRowClick(row.location)
+                        : undefined
+                    }
                   >
+                    {/* Location */}
                     <td
                       style={{
                         padding: "0.75rem",
@@ -339,6 +493,7 @@ export default function RankingTable({
                       </div>
                     </td>
 
+                    {/* Payroll */}
                     <td
                       style={{
                         padding: "0.75rem",
@@ -347,9 +502,21 @@ export default function RankingTable({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {row.payrollPct.toFixed(1)}%
+                      <div>{fmtPct(row.payrollPct)}</div>
+                      {valueView === "both" && (
+                        <div
+                          style={{
+                            fontSize: "0.7rem",
+                            fontWeight: 400,
+                            color: "#6b7280",
+                          }}
+                        >
+                          {fmtMoney(payrollValue)} payroll cost
+                        </div>
+                      )}
                     </td>
 
+                    {/* Food */}
                     <td
                       style={{
                         padding: "0.75rem",
@@ -358,9 +525,21 @@ export default function RankingTable({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {row.foodPct.toFixed(1)}%
+                      <div>{fmtPct(row.foodPct)}</div>
+                      {valueView === "both" && (
+                        <div
+                          style={{
+                            fontSize: "0.7rem",
+                            fontWeight: 400,
+                            color: "#6b7280",
+                          }}
+                        >
+                          {fmtMoney(foodValue)} food cost
+                        </div>
+                      )}
                     </td>
 
+                    {/* Drink */}
                     <td
                       style={{
                         padding: "0.75rem",
@@ -369,9 +548,21 @@ export default function RankingTable({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {row.drinkPct.toFixed(1)}%
+                      <div>{fmtPct(row.drinkPct)}</div>
+                      {valueView === "both" && (
+                        <div
+                          style={{
+                            fontSize: "0.7rem",
+                            fontWeight: 400,
+                            color: "#6b7280",
+                          }}
+                        >
+                          {fmtMoney(drinkValue)} drink cost
+                        </div>
+                      )}
                     </td>
 
+                    {/* Sales vs Budget */}
                     <td
                       style={{
                         padding: "0.75rem",
@@ -380,8 +571,18 @@ export default function RankingTable({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {row.salesVar >= 0 ? "+" : ""}
-                      £{Math.round(row.salesVar).toLocaleString()}
+                      <div>{fmtSalesVarMoney(row.salesVar)}</div>
+                      {valueView === "both" && (
+                        <div
+                          style={{
+                            fontSize: "0.7rem",
+                            fontWeight: 400,
+                            color: "#6b7280",
+                          }}
+                        >
+                          {fmtSignedPct(row.salesVarPct)} vs budget
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -398,7 +599,11 @@ export default function RankingTable({
             marginTop: "0.75rem",
           }}
         >
-          Worst payroll % appears first. Red = off target.
+          Worst payroll % appears first.{" "}
+          Payroll colour is based on how far the average % for that
+          week/period is from the {payrollTarget}% target:
+          {" "}
+          green ≤ 1pt over, amber 1–2pts over, red &gt; 2pts over.
         </div>
       </div>
     </div>
