@@ -16,13 +16,15 @@ export default function RankingTable({
   payrollTarget,
   foodTarget,
   drinkTarget,
-  // optional: click a row to jump to that location
-  onRowClick,
+  // make it OPTIONAL via default value
+  onRowClick = undefined,
 }) {
   const rankingData =
     rankingView === "period" ? rankingPeriodData : rankingWeekData;
 
   if (!rankingData || rankingData.length === 0) return null;
+
+  // ... rest of your RankingTable code unchanged ...
 
   // local toggle: show only % or % + £
   const [valueView, setValueView] = React.useState("both"); // "percent" | "both"
