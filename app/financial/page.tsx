@@ -821,23 +821,23 @@ useEffect(() => {
 
       {/* RANKING: last week / last period (picker inside the card) */}
       {['admin', 'operation', 'ops'].includes(role) &&
-        (rankingWeekData.length > 0 || rankingPeriodData.length > 0) && (
-          <RankingTable
-            rankingWeekData={rankingWeekData}
-            rankingPeriodData={rankingPeriodData}
-            rankingView={rankingView}
-            setRankingView={setRankingView}
-            weekOptions={rankingWeekOptions}
-            selectedWeek={selectedRankingWeek}
-            onWeekChange={handleRankingWeekChange}
-            periodOptions={rankingPeriodOptions}
-            selectedPeriod={selectedRankingPeriod}
-            onPeriodChange={handleRankingPeriodChange}
-            payrollTarget={PAYROLL_TARGET}
-            foodTarget={FOOD_TARGET}
-            drinkTarget={DRINK_TARGET}
-          />
-        )}
+  (rankingWeekData.length > 0 || rankingPeriodData.length > 0) && (
+    <RankingTable
+      rankingWeekData={rankingWeekData}
+      rankingPeriodData={rankingPeriodData}
+      rankingView={rankingView}
+      setRankingView={setRankingView}
+      weekOptions={weekOptions}
+      selectedWeek={selectedWeek}
+      onWeekChange={setSelectedWeek}
+      periodOptions={periodOptions}
+      selectedPeriod={selectedPeriod}
+      onPeriodChange={setSelectedPeriod}
+      payrollTarget={PAYROLL_TARGET}
+      foodTarget={FOOD_TARGET}
+      drinkTarget={DRINK_TARGET}
+    />
+  )}
 
 
       {/* extra bottom space so it doesn't crush the global footer */}
