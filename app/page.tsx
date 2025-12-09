@@ -1032,7 +1032,7 @@ useEffect(() => {
 
       {/* Payroll: its own box, same row */}
   <div className="bg-white p-4 rounded-xl shadow text-center hover:shadow-lg">
-    <h3 className="text-sm font-semibold text-gray-700">Payroll</h3>
+    <h3 className="text-sm font-semibold text-gray-700">Next Payday</h3>
 
     {nextPayrollLoading && (
       <p className="text-xs text-gray-400 mt-2">Loading payroll…</p>
@@ -1051,9 +1051,7 @@ useEffect(() => {
     {!nextPayrollLoading && !nextPayrollError && nextPayroll && (
       <div className="mt-2 space-y-1">
         <div>
-          <p className="text-[11px] uppercase tracking-wide text-gray-500">
-            Next pay date
-          </p>
+          
           <p className="text-xl font-extrabold text-gray-900">
             {formatDisplayDate(nextPayroll.payDate)}
           </p>
@@ -1069,9 +1067,7 @@ useEffect(() => {
           </p>
         </div>
 
-        <p className="mt-2 text-[10px] text-gray-400">
-          Data from Payroll Google Sheet
-        </p>
+      
       </div>
     )}
   </div>
