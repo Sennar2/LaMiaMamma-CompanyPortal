@@ -188,6 +188,40 @@ function weekdayKey(): keyof typeof DAILY_TASKS {
   return n.toLowerCase() as any;
 }
 
+/*Paydate funnction */
+function parseGbDate(value: string): Date | null {
+  const v = value.trim();
+  if (!v) return null;
+  const m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // DD/MM/YYYY
+  if (!m) return null;
+  const [, d, mo, y] = m;
+  const dt = new Date(Number(y), Number(mo) - 1, Number(d));
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+function formatDisplayDate(date: Date): string {
+  return date.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function daysUntil(date: Date): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffMs = date.getTime() - today.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "In 1 day";
+  if (diffDays > 1) return `In ${diffDays} days`;
+  if (diffDays === -1) return "1 day ago";
+  return `${Math.abs(diffDays)} days ago`;
+}
+
+
 /* Finance helpers */
 const API_KEY =
   process.env.NEXT_PUBLIC_GOOGLE_API_KEY ||
@@ -210,13 +244,13 @@ const BRAND_GROUPS: Record<string, string[]> = {
 // Payroll target fallback (used only if live target absent and a single site is selected)
 const PAYROLL_TARGET_FALLBACK: Record<string, number> = {
   "La Mia Mamma - Chelsea": 35,
-  "La Mia Mamma - Hollywood Road": 34,
+  "La Mia Mamma - Hollywood Road": 35,
   "La Mia Mamma - Notting Hill": 35,
-  "La Mia Mamma - Battersea": 34,
+  "La Mia Mamma - Battersea": 35,
   "Made in Italy - Chelsea": 35,
   "Made in Italy - Battersea": 35,
   "Fish and Bubbles - Fulham": 45,
-  "Fish and Bubbles - Notting Hill": 32,
+  "Fish and Bubbles - Notting Hill": 35,
 };
 
 function getCurrentWeekNumber() {
@@ -410,7 +444,20 @@ export default function HomePage() {
     s.employeeGroup?.name ??
     s.groupName ??
     null;
+   
+/* Payday */
+type PayrollNext = {
+  startRaw: string;
+  endRaw: string;
+  payRaw: string;
+  payDate: Date;
+};
 
+const [nextPayroll, setNextPayroll] = useState<PayrollNext | null>(null);
+const [nextPayrollLoading, setNextPayrollLoading] = useState(false);
+const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
+
+   
   /* Profile */
   useEffect(() => {
     (async () => {
@@ -713,7 +760,71 @@ export default function HomePage() {
       }
     }, 400);
   }
+   /*PayDay Funciton*/
+useEffect(() => {
+  const PAYROLL_CSV_URL =
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vRaO7nFGkJCkKD78MxrQ_gRtd7i3WXqg84TTfdEWyMhgRMk18HaSK99T6YZpWbAEEG2gU3kISx5FyN2/pub?output=csv";
 
+  async function loadPayroll() {
+    setNextPayrollLoading(true);
+    setNextPayrollError(null);
+    try {
+      const res = await fetch(PAYROLL_CSV_URL);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const text = await res.text();
+      const lines = text.trim().split(/\r?\n/);
+      if (lines.length <= 1) {
+        setNextPayroll(null);
+        return;
+      }
+
+      const [, ...rows] = lines; // skip header
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const upcoming: PayrollNext[] = [];
+
+      for (const line of rows) {
+        if (!line.trim()) continue;
+
+        // A = start, B = end, C = pay date
+        const [startCell = "", endCell = "", payCell = ""] = line.split(",");
+
+        if (!payCell.trim()) continue;
+
+        const payDate = parseGbDate(payCell);
+        const startDate = parseGbDate(startCell);
+        const endDate = parseGbDate(endCell);
+
+        if (!payDate || !startDate || !endDate) continue;
+
+        payDate.setHours(0, 0, 0, 0);
+
+        if (payDate >= today) {
+          upcoming.push({
+            startRaw: startCell.trim(),
+            endRaw: endCell.trim(),
+            payRaw: payCell.trim(),
+            payDate,
+          });
+        }
+      }
+
+      upcoming.sort((a, b) => a.payDate.getTime() - b.payDate.getTime());
+      setNextPayroll(upcoming[0] ?? null);
+    } catch (e) {
+      console.error(e);
+      setNextPayrollError("Could not load payroll info");
+    } finally {
+      setNextPayrollLoading(false);
+    }
+  }
+
+  loadPayroll();
+}, []);
+
+   
   /* News & Ops Updates — week/today/custom + realtime */
   useEffect(() => {
     if (!selectedLocation || !opsDate) return;
@@ -918,8 +1029,52 @@ export default function HomePage() {
           )}
         </div>
  
-         {/* Payroll: its own box, same row */}
-    <PayrollCard />
+
+      {/* Payroll: its own box, same row */}
+  <div className="bg-white p-4 rounded-xl shadow text-center hover:shadow-lg">
+    <h3 className="text-sm font-semibold text-gray-700">Payroll</h3>
+
+    {nextPayrollLoading && (
+      <p className="text-xs text-gray-400 mt-2">Loading payroll…</p>
+    )}
+
+    {!nextPayrollLoading && nextPayrollError && (
+      <p className="text-xs text-red-500 mt-2">{nextPayrollError}</p>
+    )}
+
+    {!nextPayrollLoading && !nextPayrollError && !nextPayroll && (
+      <p className="text-xs text-gray-400 mt-2">
+        No upcoming payroll found in the sheet.
+      </p>
+    )}
+
+    {!nextPayrollLoading && !nextPayrollError && nextPayroll && (
+      <div className="mt-2 space-y-1">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-gray-500">
+            Next pay date
+          </p>
+          <p className="text-xl font-extrabold text-gray-900">
+            {formatDisplayDate(nextPayroll.payDate)}
+          </p>
+          <p className="text-xs text-gray-500">
+            {daysUntil(nextPayroll.payDate)} • ({nextPayroll.payRaw})
+          </p>
+        </div>
+
+        <div className="mt-3 text-xs text-gray-600">
+          <p className="font-medium">Working period</p>
+          <p>
+            {nextPayroll.startRaw} → {nextPayroll.endRaw}
+          </p>
+        </div>
+
+        <p className="mt-2 text-[10px] text-gray-400">
+          Data from Payroll Google Sheet
+        </p>
+      </div>
+    )}
+  </div>
 </div>
 
 
