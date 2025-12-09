@@ -1031,51 +1031,47 @@ useEffect(() => {
  
 
       {/* Payroll: its own box, same row */}
-  <div className="bg-white p-4 rounded-xl shadow text-center hover:shadow-lg">
-    <h3 className="text-sm font-semibold text-gray-700">Payroll</h3>
-
-    {nextPayrollLoading && (
-      <p className="text-xs text-gray-400 mt-2">Loading payroll…</p>
+  <div className="bg-white p-4 rounded-xl shadow hover:shadow-lg text-center flex flex-col justify-center">
+    {loading && (
+      <p className="text-xs text-gray-400 mt-1">Loading payroll…</p>
     )}
 
-    {!nextPayrollLoading && nextPayrollError && (
-      <p className="text-xs text-red-500 mt-2">{nextPayrollError}</p>
+    {!loading && error && (
+      <p className="text-xs text-red-500 mt-1">{error}</p>
     )}
 
-    {!nextPayrollLoading && !nextPayrollError && !nextPayroll && (
-      <p className="text-xs text-gray-400 mt-2">
-        No upcoming payroll found in the sheet.
+    {!loading && !error && !next && (
+      <p className="text-xs text-gray-400 mt-1">
+        No upcoming payroll found.
       </p>
     )}
 
-    {!nextPayrollLoading && !nextPayrollError && nextPayroll && (
-      <div className="mt-2 space-y-1">
-        <div>
-          <p className="text-[11px] uppercase tracking-wide text-gray-500">
-            Next pay date
-          </p>
-          <p className="text-xl font-extrabold text-gray-900">
-            {formatDisplayDate(nextPayroll.payDate)}
-          </p>
-          <p className="text-xs text-gray-500">
-            {daysUntil(nextPayroll.payDate)} • ({nextPayroll.payRaw})
-          </p>
-        </div>
+    {!loading && !error && next && (
+      <>
+        {/* No big "Payroll" title, just this subtle label */}
+        <p className="text-[11px] font-semibold tracking-[0.16em] text-gray-500 uppercase">
+          Next pay date
+        </p>
+
+        <p className="mt-1 text-2xl font-extrabold text-gray-900">
+          {formatDisplayDate(next.payDate)}
+        </p>
+
+        <p className="mt-1 text-xs text-gray-500">
+          {daysUntil(next.payDate)} • ({next.payRaw})
+        </p>
 
         <div className="mt-3 text-xs text-gray-600">
-          <p className="font-medium">Working period</p>
-          <p>
-            {nextPayroll.startRaw} → {nextPayroll.endRaw}
+          <p className="font-semibold text-gray-700">Working period</p>
+          <p className="mt-0.5">
+            {next.startRaw} <span className="text-gray-400">→</span>{" "}
+            {next.endRaw}
           </p>
         </div>
-
-        <p className="mt-2 text-[10px] text-gray-400">
-          Data from Payroll Google Sheet
-        </p>
-      </div>
+      </>
     )}
   </div>
-</div>
+
 
 
       {/* THIS WEEK — sales + payroll (live if API exists) */}
