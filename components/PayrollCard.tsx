@@ -1,21 +1,24 @@
-// components/PayrollCard.tsx
+"use client";
+
+import { useEffect, useState } from "react";
 
 const PAYROLL_CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vRaO7nFGkJCkKD78MxrQ_gRtd7i3WXqg84TTfdEWyMhgRMk18HaSK99T6YZpWbAEEG2gU3kISx5FyN2/pub?output=csv";
 
-// A: Working Period Start
-// B: Working Period End
-// C: Pay Date
+// Sheet columns:
+// A = Working Period Start (DD/MM/YYYY)
+// B = Working Period End   (DD/MM/YYYY)
+// C = Pay Date             (DD/MM/YYYY)
 
 function parseDateFromCell(v: string): Date | null {
   const value = v.trim();
   if (!value) return null;
 
-  // 1) try native (e.g. 2025-11-17)
+  // native parse first
   const native = new Date(value);
   if (!Number.isNaN(native.getTime())) return native;
 
-  // 2) try DD/MM/YYYY (your screenshot format)
+  // DD/MM/YYYY
   const m = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) {
     const [, d, mo, y] = m;
@@ -33,63 +36,6 @@ type NextPayroll = {
   endRaw: string;
   payRaw: string;
 };
-
-async function getNextPayroll(): Promise<NextPayroll | null> {
-  const res = await fetch(PAYROLL_CSV_URL, { cache: "no-store" });
-
-  if (!res.ok) {
-    console.error("Failed to fetch payroll CSV", res.status);
-    return null;
-  }
-
-  const csv = await res.text();
-  const lines = csv.trim().split("\n");
-  if (lines.length <= 1) return null;
-
-  // first row is header
-  const dataLines = lines.slice(1);
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const upcoming: NextPayroll[] = [];
-
-  for (const line of dataLines) {
-    if (!line.trim()) continue;
-
-    // A,B,C -> start,end,pay
-    const [startCell = "", endCell = "", payCell = ""] = line.split(",");
-
-    if (!payCell.trim()) continue;
-
-    const startDate = parseDateFromCell(startCell);
-    const endDate = parseDateFromCell(endCell);
-    const payDate = parseDateFromCell(payCell);
-
-    if (!startDate || !endDate || !payDate) continue;
-
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-    payDate.setHours(0, 0, 0, 0);
-
-    // we care about the next pay date from today
-    if (payDate >= today) {
-      upcoming.push({
-        startDate,
-        endDate,
-        payDate,
-        startRaw: startCell.trim(),
-        endRaw: endCell.trim(),
-        payRaw: payCell.trim(),
-      });
-    }
-  }
-
-  if (!upcoming.length) return null;
-
-  upcoming.sort((a, b) => Number(a.payDate) - Number(b.payDate));
-  return upcoming[0];
-}
 
 function formatDisplayDate(date: Date): string {
   return date.toLocaleDateString("en-GB", {
@@ -113,40 +59,133 @@ function daysUntil(date: Date): string {
   return `${Math.abs(diffDays)} days ago`;
 }
 
-export default async function PayrollCard() {
-  const next = await getNextPayroll();
+async function fetchNextPayroll(): Promise<NextPayroll | null> {
+  const res = await fetch(PAYROLL_CSV_URL);
+  if (!res.ok) {
+    console.error("Failed to fetch payroll CSV", res.status);
+    return null;
+  }
+
+  const csv = await res.text();
+  const lines = csv.trim().split("\n");
+  if (lines.length <= 1) return null;
+
+  const [headerLine, ...dataLines] = lines;
+
+  // safety check: we expect "Working Period Start,Working Period,Pay Date"
+  // but we still just use first 3 columns.
+  console.log("Payroll header:", headerLine);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const upcoming: NextPayroll[] = [];
+
+  for (const line of dataLines) {
+    if (!line.trim()) continue;
+
+    const [startCell = "", endCell = "", payCell = ""] = line.split(",");
+
+    if (!payCell.trim()) continue;
+
+    const startDate = parseDateFromCell(startCell);
+    const endDate = parseDateFromCell(endCell);
+    const payDate = parseDateFromCell(payCell);
+
+    if (!startDate || !endDate || !payDate) continue;
+
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+    payDate.setHours(0, 0, 0, 0);
+
+    if (payDate >= today) {
+      upcoming.push({
+        startDate,
+        endDate,
+        payDate,
+        startRaw: startCell.trim(),
+        endRaw: endCell.trim(),
+        payRaw: payCell.trim(),
+      });
+    }
+  }
+
+  if (!upcoming.length) return null;
+
+  upcoming.sort((a, b) => Number(a.payDate) - Number(b.payDate));
+  return upcoming[0];
+}
+
+export default function PayrollCard() {
+  const [next, setNext] = useState<NextPayroll | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const result = await fetchNextPayroll();
+        if (!cancelled) {
+          setNext(result);
+        }
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) setError("Could not load payroll info");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
-    <div className="rounded-xl border bg-white p-4 shadow-sm flex flex-col gap-1">
-      <p className="text-sm font-medium text-gray-500">Payroll</p>
+    <div className="bg-white p-4 rounded-xl shadow hover:shadow-lg text-center">
+      <h3 className="text-sm font-semibold text-gray-700">Payroll</h3>
 
-      {next ? (
-        <>
-          <p className="text-xs text-gray-500 uppercase tracking-wide">
-            Next Pay Date
-          </p>
-          <p className="text-2xl font-semibold">
-            {formatDisplayDate(next.payDate)}
-          </p>
-          <p className="text-xs text-gray-500">
-            {daysUntil(next.payDate)} • ({next.payRaw})
-          </p>
+      {loading && (
+        <p className="text-xs text-gray-400 mt-2">Loading payroll…</p>
+      )}
 
-          <div className="mt-3 text-xs text-gray-500">
-            <p className="font-medium">Working Period</p>
+      {!loading && error && (
+        <p className="text-xs text-red-500 mt-2">{error}</p>
+      )}
+
+      {!loading && !error && !next && (
+        <p className="text-xs text-gray-400 mt-2">
+          No upcoming payroll found in the sheet.
+        </p>
+      )}
+
+      {!loading && !error && next && (
+        <div className="mt-2 space-y-1">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-gray-500">
+              Next pay date
+            </p>
+            <p className="text-xl font-extrabold text-gray-900">
+              {formatDisplayDate(next.payDate)}
+            </p>
+            <p className="text-xs text-gray-500">
+              {daysUntil(next.payDate)} • ({next.payRaw})
+            </p>
+          </div>
+
+          <div className="mt-3 text-xs text-gray-600">
+            <p className="font-medium">Working period</p>
             <p>
               {next.startRaw} → {next.endRaw}
             </p>
           </div>
 
-          <p className="text-[10px] text-gray-400 mt-2">
-            Data from Google Sheet (Working Period Start / End / Pay Date)
+          <p className="mt-2 text-[10px] text-gray-400">
+            Data from Payroll Google Sheet
           </p>
-        </>
-      ) : (
-        <p className="text-sm text-gray-500">
-          No upcoming payroll row found in the sheet.
-        </p>
+        </div>
       )}
     </div>
   );
