@@ -919,8 +919,7 @@ export default function HomePage() {
         </div>
  
          {/* Payroll: its own box, same row */}
-  {/* @ts-expect-error Async Server Component (if TS complains) */}
-  <PayrollCard />
+    <PayrollCard />
 </div>
 
 
