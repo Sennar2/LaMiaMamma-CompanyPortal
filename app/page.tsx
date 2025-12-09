@@ -903,7 +903,7 @@ export default function HomePage() {
         </div>
 
         {/* Weather (bigger/bolder) */}
-        <div className="bg-white p-4 rounded-xl shadow text-center hover:shadow-lg md:col-span-1">
+        <div className="bg-white p-4 rounded-xl shadow text-center hover:shadow-lg">
           <h3 className="text-sm font-semibold text-gray-700">Weather</h3>
           {weather ? (
             <div className="flex justify-center items-center gap-3 mt-2">
