@@ -8,6 +8,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { LOCATIONS as PLANDAY_LOCATIONS } from "@/data/locations";
 import ComplianceBar from "@/components/financial/ComplianceBar";
 import MaintenanceCountBadge from "@/components/MaintenanceCountBadge";
+import PayrollCard from "@/components/PayrollCard";
+
 
 /* ──────────────────────────────────────────────────────────────────────────────
    Types
@@ -474,6 +476,8 @@ export default function HomePage() {
       .catch(() => setWeather(null));
   }, [selectedLocation]);
 
+   
+
   /* Revenue (today/week) */
   useEffect(() => {
     if (!selectedLocation) return;
@@ -913,7 +917,12 @@ export default function HomePage() {
             <div className="text-xs text-gray-400 mt-2">Weather unavailable</div>
           )}
         </div>
-      </div>
+ 
+         {/* Payroll: its own box, same row */}
+  {/* @ts-expect-error Async Server Component (if TS complains) */}
+  <PayrollCard />
+</div>
+
 
       {/* THIS WEEK — sales + payroll (live if API exists) */}
       <section className="bg-white p-4 rounded-xl shadow hover:shadow-lg">
