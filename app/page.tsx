@@ -567,6 +567,7 @@ const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
     if (!selectedLocation) return;
 
     const ymdToday = todayYmd();
+
     const departmentIds =
       selectedLocation === "All"
         ? PLANDAY_LOCATIONS.map((l: any) =>
@@ -593,6 +594,8 @@ const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
           body: JSON.stringify({
             departmentIds,
             anchorYmd: ymdToday,
+            // for "All" we don't send a location name so the API
+            // does NOT try to read a sheet tab called "All"
             locationName: selectedLocation === "All" ? undefined : selectedLocation,
           }),
         });
