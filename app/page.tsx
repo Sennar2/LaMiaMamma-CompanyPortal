@@ -596,7 +596,7 @@ const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
             anchorYmd: ymdToday,
             // for "All" we don't send a location name so the API
             // does NOT try to read a sheet tab called "All"
-            locationName:  locationName: selectedLocation === "All" ? "GroupOverview" : selectedLocation,
+            locationName: selectedLocation === "All" ? "GroupOverview" : selectedLocation,
           }),
         });
 
