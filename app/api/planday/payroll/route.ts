@@ -92,7 +92,8 @@ function parseCSV(text: string): string[][] {
     for (let i = 0; i < ln.length; i++) {
       const ch = ln[i];
       if (ch === '"' && ln[i + 1] === '"') {
-        cur += '"'; i++;
+        cur += '"';
+        i++;
       } else if (ch === '"') {
         inQ = !inQ;
       } else if (ch === "," && !inQ) {
@@ -107,7 +108,9 @@ function parseCSV(text: string): string[][] {
   });
 }
 
-async function readWeeklyForecastFromSheet(tabName: string): Promise<{ salesForecast?: number; payrollForecastGBP?: number }> {
+async function readWeeklyForecastFromSheet(
+  tabName: string
+): Promise<{ salesForecast?: number; payrollForecastGBP?: number }> {
   try {
     const url = `${WEEK_FORECAST_CSV_BASE}&sheet=${encodeURIComponent(tabName)}`;
     const resp = await fetch(url);
@@ -152,26 +155,57 @@ export async function POST(req: Request) {
     }
 
     const ymd = anchorYmd || new Date().toISOString().slice(0, 10);
-    const { start, end } = weekRangeFromAnchor(ymd);
+
+    // Week boundaries in YMD
+    const weekMonYmd = startOfWeekMonday(ymd);
+    const weekSunYmd = addDays(weekMonYmd, 6);
+
+    // Full week range (Mon–Sun)
+    const weekStartISO = `${weekMonYmd}T00:00:00Z`;
+    const weekEndISO = `${weekSunYmd}T23:59:59.999Z`;
+
+    // "So far" range: Mon → yesterday (but not before Monday)
+    const yesterdayYmd = addDays(ymd, -1);
+    const uptoYmd = yesterdayYmd < weekMonYmd ? weekMonYmd : yesterdayYmd;
+    const uptoEndISO = `${uptoYmd}T23:59:59.999Z`;
+
     const origin = new URL(req.url).origin;
 
-    // 1) Labour/wages (scheduled) for the week
-    let wagesGBP = 0;
+    // 1) Labour/wages (scheduled)
+    //    a) full week (Mon–Sun)       -> wagesWeekGBP
+    //    b) "so far" (Mon–yesterday)  -> wagesToDateGBP
+    let wagesWeekGBP = 0;
+    let wagesToDateGBP = 0;
+
     try {
-      const labourResp = await fetch(`${origin}/api/planday/labour`, {
+      // full week
+      const labourWeekResp = await fetch(`${origin}/api/planday/labour`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ departmentIds, start, end }),
+        body: JSON.stringify({ departmentIds, start: weekStartISO, end: weekEndISO }),
       });
-      if (labourResp.ok) {
-        const j = await labourResp.json();
-        wagesGBP = Number(j?.weekLabourScheduled ?? 0);
+      if (labourWeekResp.ok) {
+        const j = await labourWeekResp.json();
+        wagesWeekGBP = Number(j?.weekLabourScheduled ?? 0);
       }
-    } catch {}
+
+      // so far
+      const labourToDateResp = await fetch(`${origin}/api/planday/labour`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ departmentIds, start: weekStartISO, end: uptoEndISO }),
+      });
+      if (labourToDateResp.ok) {
+        const j2 = await labourToDateResp.json();
+        wagesToDateGBP = Number(j2?.weekLabourScheduled ?? 0);
+      }
+    } catch {
+      // leave wages* at 0 on failure
+    }
 
     // 2) Sales actual + budget/forecast + (maybe) payroll target from your revenue route
-    let salesActual = 0;
-    let salesForecast = 0;
+    let salesActual = 0;   // week actual so far (Mon–yesterday)
+    let salesForecast = 0; // full week forecast (Mon–Sun)
     let plandayTargetPct: number | null = null;
 
     try {
@@ -183,8 +217,8 @@ export async function POST(req: Request) {
       if (revResp.ok) {
         const j = await revResp.json();
         salesActual = Number(j?.weekActual ?? 0);
-        salesForecast =
-          pickFirstNumber(j, "weekBudget", "weekForecast") ?? 0;
+        // from updated revenue route: weekForecast = full week budgets
+        salesForecast = Number(j?.weekForecast ?? j?.weekBudgetFull ?? 0);
 
         const possibleTarget = pickFirstNumber(
           j,
@@ -195,7 +229,9 @@ export async function POST(req: Request) {
         );
         if (possibleTarget != null) plandayTargetPct = possibleTarget;
       }
-    } catch {}
+    } catch {
+      // ignore, keep zeros
+    }
 
     // 3) If a week forecast is missing/zero, pull from the published sheet (tab = location)
     const resolvedLocation =
@@ -219,8 +255,12 @@ export async function POST(req: Request) {
     }
 
     // 5) Derived
-    const payrollPctActual = salesActual > 0 ? (wagesGBP / salesActual) * 100 : null;
-    const payrollPctForecast = salesForecast > 0 ? (wagesGBP / salesForecast) * 100 : null;
+    //    - payrollPctActual: using wagesToDateGBP vs salesActual (so far)
+    //    - payrollPctForecast: using wagesWeekGBP vs salesForecast (full week)
+    const payrollPctActual =
+      salesActual > 0 ? (wagesToDateGBP / salesActual) * 100 : null;
+    const payrollPctForecast =
+      salesForecast > 0 ? (wagesWeekGBP / salesForecast) * 100 : null;
 
     const variancePct =
       payrollPctActual != null && targetPct != null
@@ -232,20 +272,37 @@ export async function POST(req: Request) {
         ? Math.round((variancePct / 100) * salesActual)
         : null;
 
+    const { start, end } = weekRangeFromAnchor(ymd);
+
     return NextResponse.json({
-      scope: { start, end, anchorYmd: ymd, locationResolved: resolvedLocation },
+      scope: {
+        start,
+        end,
+        anchorYmd: ymd,
+        locationResolved: resolvedLocation,
+      },
       totals: {
-        wagesGBP: Number(wagesGBP.toFixed(2)),
-        salesActual: Math.round(salesActual),
-        salesForecast: Math.round(salesForecast),
-        payrollPctActual: payrollPctActual != null ? Number(payrollPctActual.toFixed(2)) : null,
-        payrollPctForecast: payrollPctForecast != null ? Number(payrollPctForecast.toFixed(2)) : null,
+        // BACKWARDS COMPAT:
+        // wagesGBP = "wages so far" (Mon–yesterday)
+        wagesGBP: Number(wagesToDateGBP.toFixed(2)),
+
+        // Explicit fields:
+        wagesToDateGBP: Number(wagesToDateGBP.toFixed(2)), // Mon–yesterday
+        wagesWeekGBP: Number(wagesWeekGBP.toFixed(2)),     // Mon–Sun full week
+
+        salesActual: Math.round(salesActual),              // Mon–yesterday
+        salesForecast: Math.round(salesForecast),          // full week forecast
+
+        payrollPctActual:
+          payrollPctActual != null ? Number(payrollPctActual.toFixed(2)) : null,
+        payrollPctForecast:
+          payrollPctForecast != null ? Number(payrollPctForecast.toFixed(2)) : null,
         targetPct,
         variancePct,
         varianceGBP,
       },
       sources: {
-        wages: "planday:labour(scheduled, week)",
+        wages: "planday:labour(scheduled, mon-sun + so-far)",
         sales: "planday:revenue (week) + sheet fallback if blank",
         target: targetSource,
         forecastsSheet: resolvedLocation ? `sheet tab = ${resolvedLocation}` : "n/a",
