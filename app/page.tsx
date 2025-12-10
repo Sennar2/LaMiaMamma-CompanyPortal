@@ -382,6 +382,14 @@ export default function HomePage() {
   const [weekWages, setWeekWages] = useState<number>(0); // £
   const [payrollLoading, setPayrollLoading] = useState(false);
   const [payrollLiveSource, setPayrollLiveSource] = useState<"planday" | "fallback" | "none">("none");
+   
+     // From payroll API / Google Sheet
+  const [weekPayrollForecastCost, setWeekPayrollForecastCost] =
+    useState<number | null>(null); // £ Payroll_App
+  const [weekSalesForecastFromPayroll, setWeekSalesForecastFromPayroll] =
+    useState<number | null>(null); // £ SaleForecast
+
+   
 
   /* Shifts */
   const [selectedShiftDate, setSelectedShiftDate] = useState(new Date().toLocaleDateString("en-GB"));
@@ -554,13 +562,11 @@ const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
     })();
   }, [selectedLocation, DEPTS_BY_NAME]);
 
-   /* Live Payroll (THIS WEEK) — scheduled cost vs sales */
+  /* Live Payroll (THIS WEEK) — uses Planday + sheet forecast */
   useEffect(() => {
     if (!selectedLocation) return;
 
     const ymdToday = todayYmd();
-
-    const { start, end } = weekRangeLondon(ymdToday);
     const departmentIds =
       selectedLocation === "All"
         ? PLANDAY_LOCATIONS.map((l: any) =>
@@ -569,9 +575,11 @@ const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
         : DEPTS_BY_NAME[selectedLocation.toLowerCase()] || [];
 
     if (!departmentIds.length) {
+      setWeekWages(0);
       setWeekPayrollPct(null);
       setWeekPayrollTargetPct(null);
-      setWeekWages(0);
+      setWeekPayrollForecastCost(null);
+      setWeekSalesForecastFromPayroll(null);
       setPayrollLiveSource("none");
       return;
     }
@@ -582,7 +590,6 @@ const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
         const resp = await fetch("/api/planday/payroll", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // NOTE: payroll route derives week from anchorYmd
           body: JSON.stringify({
             departmentIds,
             anchorYmd: ymdToday,
@@ -591,9 +598,10 @@ const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
         });
 
         if (!resp.ok) {
-          // fall back to static targets if API fails
           setWeekWages(0);
           setWeekPayrollPct(null);
+          setWeekPayrollForecastCost(null);
+          setWeekSalesForecastFromPayroll(null);
           setWeekPayrollTargetPct(
             selectedLocation !== "All"
               ? PAYROLL_TARGET_FALLBACK[selectedLocation] ?? null
@@ -604,40 +612,55 @@ const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
         }
 
         const j = await resp.json();
-
         const totals = j?.totals || {};
         const sources = j?.sources || {};
 
-        // new field names from /api/planday/payroll
-        const wages = Number(totals.wagesGBP ?? 0);
+        const wagesToDate = Number(
+          totals.wagesToDateGBP ?? totals.wagesGBP ?? 0
+        );
         const salesActual = Number(totals.salesActual ?? 0);
-        const payrollPctActual =
+        const salesForecast = Number(totals.salesForecast ?? 0);
+        const payrollForecastGBP =
+          totals.payrollForecastGBP != null
+            ? Number(totals.payrollForecastGBP)
+            : null;
+
+        const apiPctActual =
           typeof totals.payrollPctActual === "number"
             ? Number(totals.payrollPctActual)
-            : salesActual > 0
-            ? (wages / salesActual) * 100
             : null;
-
-        const targetPct =
+        const targetPctFromApi =
           typeof totals.targetPct === "number"
             ? Number(totals.targetPct)
-            : selectedLocation !== "All"
-            ? PAYROLL_TARGET_FALLBACK[selectedLocation] ?? null
             : null;
 
-        setWeekWages(wages);
-        setWeekPayrollPct(
-          payrollPctActual != null ? Number(payrollPctActual) : null
-        );
-        setWeekPayrollTargetPct(targetPct);
+        const actualPct =
+          apiPctActual != null
+            ? apiPctActual
+            : salesActual > 0
+            ? (wagesToDate / salesActual) * 100
+            : null;
 
-        // If the backend says target came from Planday, keep the “Live” label
+        let targetPct: number | null = null;
+        if (targetPctFromApi != null) targetPct = targetPctFromApi;
+        else if (selectedLocation !== "All")
+          targetPct = PAYROLL_TARGET_FALLBACK[selectedLocation] ?? null;
+
+        setWeekWages(wagesToDate);
+        setWeekPayrollPct(actualPct);
+        setWeekPayrollTargetPct(targetPct);
+        setWeekSalesForecastFromPayroll(
+          salesForecast > 0 ? salesForecast : null
+        );
+        setWeekPayrollForecastCost(payrollForecastGBP);
         setPayrollLiveSource(
           sources?.target === "planday" ? "planday" : "fallback"
         );
       } catch {
         setWeekWages(0);
         setWeekPayrollPct(null);
+        setWeekPayrollForecastCost(null);
+        setWeekSalesForecastFromPayroll(null);
         setWeekPayrollTargetPct(
           selectedLocation !== "All"
             ? PAYROLL_TARGET_FALLBACK[selectedLocation] ?? null
@@ -649,6 +672,7 @@ const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
       }
     })();
   }, [selectedLocation, DEPTS_BY_NAME]);
+
 
   /* Finance snapshot (unchanged) */
   useEffect(() => {
@@ -926,27 +950,38 @@ useEffect(() => {
     );
   }
 
-    /* Derived KPIs for THIS WEEK */
-  const weekActual = Number(revenue?.weekActual ?? 0);     // sales so far
-  const weekForecast = Number(revenue?.weekForecast ?? 0); // sales forecast for the week
+      /* Derived KPIs for THIS WEEK */
+  const weekActual = Number(revenue?.weekActual ?? 0); // sales so far (Mon–yesterday)
+
+  // Prefer sales forecast coming from payroll API / sheet; fallback to revenue route
+  const weekForecastRaw = Number(revenue?.weekForecast ?? 0);
+  const weekForecast =
+    weekSalesForecastFromPayroll != null && weekSalesForecastFromPayroll > 0
+      ? weekSalesForecastFromPayroll
+      : weekForecastRaw;
 
   const salesGap = Math.max(0, weekForecast - weekActual);
   const forecastProgress =
-    weekForecast > 0 ? Math.min(100, Math.round((weekActual / weekForecast) * 100)) : 0;
+    weekForecast > 0
+      ? Math.min(100, Math.round((weekActual / weekForecast) * 100))
+      : 0;
 
-  // payroll % of sales (still useful, like Planday "Actual 31.1% / Target 34.1%")
   const payrollPctActual =
     typeof weekPayrollPct === "number" ? weekPayrollPct : null;
   const payrollTargetPct =
     typeof weekPayrollTargetPct === "number" ? weekPayrollTargetPct : null;
 
-  // 🔹 Forecast payroll cost for the week = target % * sales forecast
+  // Forecast payroll cost for the week:
+  // 1) Prefer Payroll_App from sheet (weekPayrollForecastCost)
+  // 2) Fallback to target% * week sales forecast
   const forecastPayrollCost =
-    payrollTargetPct != null && weekForecast > 0
+    weekPayrollForecastCost != null
+      ? weekPayrollForecastCost
+      : payrollTargetPct != null && weekForecast > 0
       ? (payrollTargetPct / 100) * weekForecast
       : null;
 
-  // 🔹 Variance of actual wages vs forecasted payroll cost
+  // Over / under vs forecast payroll spend
   const payrollCostVarGBP =
     forecastPayrollCost != null ? weekWages - forecastPayrollCost : null;
 
@@ -954,7 +989,6 @@ useEffect(() => {
     forecastPayrollCost != null && forecastPayrollCost !== 0
       ? (weekWages / forecastPayrollCost) * 100 - 100
       : null;
-
 
   /* UI */
   return (
