@@ -926,16 +926,35 @@ useEffect(() => {
     );
   }
 
-  /* Derived KPIs for THIS WEEK */
-  const weekActual = Number(revenue?.weekActual ?? 0);
-  const weekForecast = Number(revenue?.weekForecast ?? 0);
-  const salesGap = Math.max(0, weekForecast - weekActual); // £ needed to hit forecast (0 if ahead)
-  const forecastProgress = weekForecast > 0 ? Math.min(100, Math.round((weekActual / weekForecast) * 100)) : 0;
+    /* Derived KPIs for THIS WEEK */
+  const weekActual = Number(revenue?.weekActual ?? 0);     // sales so far
+  const weekForecast = Number(revenue?.weekForecast ?? 0); // sales forecast for the week
 
-  const payrollPctActual = typeof weekPayrollPct === "number" ? weekPayrollPct : null;
-  const payrollTargetPct = typeof weekPayrollTargetPct === "number" ? weekPayrollTargetPct : null;
-  const payrollVarPct = payrollPctActual != null && payrollTargetPct != null ? payrollPctActual - payrollTargetPct : null;
-  const payrollVarGBP = payrollVarPct != null ? Math.round(((payrollVarPct / 100) * weekActual) || 0) : null; // + = over
+  const salesGap = Math.max(0, weekForecast - weekActual);
+  const forecastProgress =
+    weekForecast > 0 ? Math.min(100, Math.round((weekActual / weekForecast) * 100)) : 0;
+
+  // payroll % of sales (still useful, like Planday "Actual 31.1% / Target 34.1%")
+  const payrollPctActual =
+    typeof weekPayrollPct === "number" ? weekPayrollPct : null;
+  const payrollTargetPct =
+    typeof weekPayrollTargetPct === "number" ? weekPayrollTargetPct : null;
+
+  // 🔹 Forecast payroll cost for the week = target % * sales forecast
+  const forecastPayrollCost =
+    payrollTargetPct != null && weekForecast > 0
+      ? (payrollTargetPct / 100) * weekForecast
+      : null;
+
+  // 🔹 Variance of actual wages vs forecasted payroll cost
+  const payrollCostVarGBP =
+    forecastPayrollCost != null ? weekWages - forecastPayrollCost : null;
+
+  const payrollCostVarPct =
+    forecastPayrollCost != null && forecastPayrollCost !== 0
+      ? (weekWages / forecastPayrollCost) * 100 - 100
+      : null;
+
 
   /* UI */
   return (
@@ -1087,94 +1106,158 @@ useEffect(() => {
 </div>
 
 
-      {/* THIS WEEK — sales + payroll (live if API exists) */}
+            {/* THIS WEEK — sales + payroll */}
       <section className="bg-white p-4 rounded-xl shadow hover:shadow-lg">
         <div className="flex items-center justify-between">
           <h3 className="text-md font-semibold text-gray-900">This Week (Mon–Sun)</h3>
         </div>
 
         <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* ── 1) Sales: current vs week forecast ───────────────────── */}
           <div className="border rounded-lg p-3">
             <div className="text-xs text-gray-500">Week so far</div>
-            <div className="text-lg font-bold text-gray-900">{fmtGBP(weekActual)}</div>
+            <div className="text-lg font-bold text-gray-900">
+              {fmtGBP(weekActual)}
+            </div>
             <div className="text-xs text-gray-600">
-              Forecast: <span className="font-semibold">{fmtGBP(weekForecast)}</span>
+              Forecast (week):{" "}
+              <span className="font-semibold">{fmtGBP(weekForecast)}</span>
             </div>
             <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
               <div
-                className={`h-full ${salesGap === 0 ? "bg-emerald-500" : "bg-blue-600"}`}
+                className={`h-full ${
+                  salesGap === 0 ? "bg-emerald-500" : "bg-blue-600"
+                }`}
                 style={{ width: `${forecastProgress}%` }}
               />
             </div>
-            <div className="mt-1 text-[11px] text-gray-500">{forecastProgress}% of forecast</div>
+            <div className="mt-1 text-[11px] text-gray-500">
+              {forecastProgress}% of forecast
+            </div>
             {weekForecast > 0 && salesGap > 0 ? (
               <div className="mt-1 text-[11px] text-amber-700">
                 You need <strong>{fmtGBP(salesGap)}</strong> to reach forecast.
               </div>
             ) : weekForecast > 0 ? (
-              <div className="mt-1 text-[11px] text-emerald-700">You are ahead of forecast — great job!</div>
+              <div className="mt-1 text-[11px] text-emerald-700">
+                You are ahead of forecast — great job!
+              </div>
             ) : null}
           </div>
 
+          {/* ── 2) Payroll cost: current spend vs forecasted cost ────── */}
           <div className="border rounded-lg p-3">
             <div className="text-xs text-gray-500">
-              {payrollLiveSource === "planday" ? "Live Payroll % (Planday)" : "Payroll %"}
+              Payroll cost (so far vs week forecast)
             </div>
-            <div className="text-lg font-extrabold">
-              {payrollLoading ? (
-                <span className="text-gray-400">…</span>
-              ) : payrollPctActual != null ? (
-                <span className={payrollVarPct != null && payrollVarPct > 0 ? "text-rose-600" : "text-emerald-700"}>
+
+            {payrollLoading ? (
+              <div className="mt-1 text-lg font-extrabold text-gray-400">
+                …
+              </div>
+            ) : (
+              <>
+                <div className="mt-1 text-sm text-gray-600">
+                  So far:{" "}
+                  <span className="font-semibold">
+                    {fmtGBP(weekWages)}
+                  </span>
+                </div>
+
+                <div className="text-sm text-gray-600">
+                  Forecast cost:{" "}
+                  {forecastPayrollCost != null ? (
+                    <span className="font-semibold">
+                      {fmtGBP(Math.round(forecastPayrollCost))}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">n/a</span>
+                  )}
+                </div>
+
+                {payrollCostVarGBP != null && (
+                  <div className="mt-1 text-xs">
+                    <span
+                      className={
+                        payrollCostVarGBP > 0
+                          ? "text-rose-600 font-semibold"
+                          : "text-emerald-700 font-semibold"
+                      }
+                    >
+                      {payrollCostVarGBP > 0 ? "Over" : "Under"} by{" "}
+                      {fmtGBP(Math.abs(Math.round(payrollCostVarGBP)))}
+                    </span>
+                    {payrollCostVarPct != null && (
+                      <span className="text-gray-500">
+                        {" "}
+                        (
+                        {payrollCostVarPct > 0 ? "+" : ""}
+                        {payrollCostVarPct.toFixed(1)}%)
+                      </span>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* ── 3) Payroll % of sales vs target (like Planday footer) ── */}
+          <div className="border rounded-lg p-3">
+            <div className="text-xs text-gray-500">
+              Payroll % of sales (so far)
+            </div>
+
+            <div className="mt-1 text-sm">
+              Actual:{" "}
+              {payrollPctActual != null ? (
+                <span className="font-semibold">
                   {payrollPctActual.toFixed(1)}%
                 </span>
               ) : (
                 <span className="text-gray-400">n/a</span>
               )}
             </div>
-            <div className="text-xs text-gray-600">
-              Wages (so far): <span className="font-semibold">{fmtGBP(weekWages)}</span>
-            </div>
-            {payrollLiveSource === "none" && (
-              <div className="text-[11px] text-gray-400 mt-1">Connect /api/planday/payroll for live %</div>
-            )}
-          </div>
 
-          <div className="border rounded-lg p-3">
-            <div className="text-xs text-gray-500">Target & Variance</div>
-            <div className="text-sm">
+            <div className="mt-1 text-sm">
               Target:{" "}
               {payrollTargetPct != null ? (
-                <strong>{payrollTargetPct.toFixed(1)}%</strong>
-              ) : (
-                <span className="text-gray-400">n/a</span>
-              )}
-            </div>
-            <div className="mt-1 text-sm">
-              Variance:{" "}
-              {payrollVarPct != null ? (
-                <span className={payrollVarPct > 0 ? "text-rose-600 font-semibold" : "text-emerald-700 font-semibold"}>
-                  {payrollVarPct > 0 ? "+" : ""}
-                  {payrollVarPct.toFixed(1)}%
+                <span className="font-semibold">
+                  {payrollTargetPct.toFixed(1)}%
                 </span>
               ) : (
                 <span className="text-gray-400">n/a</span>
               )}
             </div>
-            <div className="text-xs text-gray-600">
-              {payrollVarGBP != null ? (
-                <>
-                  ({payrollVarGBP > 0 ? "over" : "under"} by <strong>{fmtGBP(Math.abs(payrollVarGBP))}</strong>)
-                </>
+
+            <div className="mt-1 text-sm">
+              Variance:{" "}
+              {payrollPctActual != null && payrollTargetPct != null ? (
+                (() => {
+                  const diff = payrollPctActual - payrollTargetPct;
+                  const cls =
+                    diff > 0
+                      ? "text-rose-600 font-semibold"
+                      : "text-emerald-700 font-semibold";
+                  return (
+                    <span className={cls}>
+                      {diff > 0 ? "+" : ""}
+                      {diff.toFixed(1)}%
+                    </span>
+                  );
+                })()
               ) : (
-                "—"
+                <span className="text-gray-400">n/a</span>
               )}
             </div>
-            <div className="mt-2 text-[11px] text-gray-400">
-              Target comes from Planday when available; otherwise site fallback is used.
+
+            <div className="mt-2 text-xs text-gray-400">
+              Target comes from Planday when available; otherwise site
+              fallback is used.
             </div>
           </div>
         </div>
       </section>
+
 
       {/* Maintenance + Daily Ops */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
