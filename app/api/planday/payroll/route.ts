@@ -3,7 +3,7 @@ import { LOCATIONS } from "@/data/locations";
 
 /** ---------- Config ---------- **/
 
-// Published CSV (each tab is a location, columns: SaleForecast, Payroll_App)
+// Published CSV (each tab is a location, columns: WeekStart, Payroll_App, SaleForecast)
 const WEEK_FORECAST_CSV_BASE =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSxZeFz50aJUNKILXl3GqdQW-_CCXO4-6aizsQbFMXjsL4q24iJV1zhWkEeT-wbjl4psDOT3mHdrO7U/pub?output=csv";
 
@@ -22,9 +22,8 @@ const PAYROLL_TARGET_FALLBACK: Record<string, number> = {
 /** ---------- Types ---------- **/
 type Body = {
   departmentIds?: string[];
-  // pass any date in the target week (yyyy-mm-dd). If omitted, uses "today".
-  anchorYmd?: string;
-  locationName?: string; // for target/fallback & sheet tab selection
+  anchorYmd?: string; // yyyy-mm-dd (any date in week)
+  locationName?: string; // for sheet tab selection
 };
 
 /** ---------- Helpers ---------- **/
@@ -108,8 +107,13 @@ function parseCSV(text: string): string[][] {
   });
 }
 
+/**
+ * Read one week's forecast from the Google Sheet.
+ * WeekStart is UK dd/mm/yyyy or yyyy-mm-dd.
+ */
 async function readWeeklyForecastFromSheet(
-  tabName: string
+  tabName: string,
+  weekMonYmd: string
 ): Promise<{ salesForecast?: number; payrollForecastGBP?: number }> {
   try {
     const url = `${WEEK_FORECAST_CSV_BASE}&sheet=${encodeURIComponent(tabName)}`;
@@ -120,26 +124,96 @@ async function readWeeklyForecastFromSheet(
     if (rows.length < 2) return {};
 
     const header = rows[0].map((h) => h.toLowerCase());
+
     const saleIdx = header.findIndex((h) => h.includes("saleforecast"));
     const payrollIdx = header.findIndex((h) => h.includes("payroll_app"));
+    const weekIdx =
+      header.findIndex((h) => h.includes("weekstart")) >= 0
+        ? header.findIndex((h) => h.includes("weekstart"))
+        : header.findIndex((h) => h === "week");
 
-    if (saleIdx === -1 && payrollIdx === -1) return {};
+    if ((saleIdx === -1 && payrollIdx === -1) || weekIdx === -1) return {};
 
-    // pick the last row with numeric values
-    for (let i = rows.length - 1; i >= 1; i--) {
+    const normaliseWeekCell = (raw: string | undefined): string | null => {
+      if (!raw) return null;
+      const s = raw.trim();
+      if (!s) return null;
+
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // already yyyy-mm-dd
+
+      // dd/mm/yyyy or dd-mm-yyyy -> yyyy-mm-dd
+      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+      if (m) {
+        const [, d, mo, y] = m;
+        const dd = d.padStart(2, "0");
+        const mm = mo.padStart(2, "0");
+        return `${y}-${mm}-${dd}`;
+      }
+
+      return null;
+    };
+
+    // 1) exact WeekStart match
+    for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
-      const sale = saleIdx >= 0 ? Number(String(r[saleIdx] || "").replace(/[,£]/g, "")) : NaN;
-      const payr = payrollIdx >= 0 ? Number(String(r[payrollIdx] || "").replace(/[,£]/g, "")) : NaN;
+      const weekCell = normaliseWeekCell(r[weekIdx]);
+      if (weekCell !== weekMonYmd) continue;
+
+      const sale =
+        saleIdx >= 0
+          ? Number(String(r[saleIdx] || "").replace(/[,£]/g, ""))
+          : NaN;
+      const payr =
+        payrollIdx >= 0
+          ? Number(String(r[payrollIdx] || "").replace(/[,£]/g, ""))
+          : NaN;
+
       const hasSale = Number.isFinite(sale) && sale > 0;
       const hasPayr = Number.isFinite(payr) && payr > 0;
-      if (hasSale || hasPayr) {
-        return {
-          salesForecast: hasSale ? Math.round(sale) : undefined,
-          payrollForecastGBP: hasPayr ? Math.round(payr) : undefined,
-        };
+
+      if (!hasSale && !hasPayr) continue;
+
+      return {
+        salesForecast: hasSale ? Math.round(sale) : undefined,
+        payrollForecastGBP: hasPayr ? Math.round(payr) : undefined,
+      };
+    }
+
+    // 2) fallback: row with biggest SaleForecast
+    let bestRowIndex: number | null = null;
+    let bestSale = -Infinity;
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const sale =
+        saleIdx >= 0
+          ? Number(String(r[saleIdx] || "").replace(/[,£]/g, ""))
+          : NaN;
+      if (!Number.isFinite(sale) || sale <= 0) continue;
+      if (sale > bestSale) {
+        bestSale = sale;
+        bestRowIndex = i;
       }
     }
-    return {};
+
+    if (bestRowIndex == null) return {};
+
+    const row = rows[bestRowIndex];
+    const saleVal =
+      saleIdx >= 0
+        ? Number(String(row[saleIdx] || "").replace(/[,£]/g, ""))
+        : NaN;
+    const payVal =
+      payrollIdx >= 0
+        ? Number(String(row[payrollIdx] || "").replace(/[,£]/g, ""))
+        : NaN;
+
+    const hasSale = Number.isFinite(saleVal) && saleVal > 0;
+    const hasPayr = Number.isFinite(payVal) && payVal > 0;
+
+    return {
+      salesForecast: hasSale ? Math.round(saleVal) : undefined,
+      payrollForecastGBP: hasPayr ? Math.round(payVal) : undefined,
+    };
   } catch {
     return {};
   }
@@ -151,7 +225,10 @@ export async function POST(req: Request) {
     const body: Body = await req.json();
     const { departmentIds, anchorYmd, locationName } = body || {};
     if (!departmentIds?.length) {
-      return NextResponse.json({ error: "departmentIds required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "departmentIds required" },
+        { status: 400 }
+      );
     }
 
     const ymd = anchorYmd || new Date().toISOString().slice(0, 10);
@@ -172,15 +249,19 @@ export async function POST(req: Request) {
     const origin = new URL(req.url).origin;
 
     // 1) Labour/wages (scheduled)
-    let wagesWeekGBP = 0;     // full week scheduled
-    let wagesToDateGBP = 0;   // scheduled so far (Mon–yesterday)
+    let wagesWeekGBP = 0;
+    let wagesToDateGBP = 0;
 
     try {
       // full week
       const labourWeekResp = await fetch(`${origin}/api/planday/labour`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ departmentIds, start: weekStartISO, end: weekEndISO }),
+        body: JSON.stringify({
+          departmentIds,
+          start: weekStartISO,
+          end: weekEndISO,
+        }),
       });
       if (labourWeekResp.ok) {
         const j = await labourWeekResp.json();
@@ -191,19 +272,23 @@ export async function POST(req: Request) {
       const labourToDateResp = await fetch(`${origin}/api/planday/labour`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ departmentIds, start: weekStartISO, end: uptoEndISO }),
+        body: JSON.stringify({
+          departmentIds,
+          start: weekStartISO,
+          end: uptoEndISO,
+        }),
       });
       if (labourToDateResp.ok) {
         const j2 = await labourToDateResp.json();
         wagesToDateGBP = Number(j2?.weekLabourScheduled ?? 0);
       }
     } catch {
-      // leave wages* at 0 on failure
+      // keep zeros
     }
 
-    // 2) Sales actual + Planday forecast + target % (if available)
-    let salesActual = 0;       // actual Mon–yesterday
-    let salesForecast = 0;     // full week forecast
+    // 2) Sales actual + Planday forecast
+    let salesActual = 0;
+    let salesForecast = 0;
     let plandayTargetPct: number | null = null;
 
     try {
@@ -214,8 +299,8 @@ export async function POST(req: Request) {
       });
       if (revResp.ok) {
         const j = await revResp.json();
-        salesActual = Number(j?.weekActual ?? 0);           // Mon–yesterday
-        salesForecast = Number(j?.weekForecast ?? 0);       // full week if Planday has budgets
+        salesActual = Number(j?.weekActual ?? 0);
+        salesForecast = Number(j?.weekForecast ?? j?.weekBudgetFull ?? 0);
 
         const possibleTarget = pickFirstNumber(
           j,
@@ -227,17 +312,16 @@ export async function POST(req: Request) {
         if (possibleTarget != null) plandayTargetPct = possibleTarget;
       }
     } catch {
-      // ignore, keep zeros
+      // keep zeros
     }
 
-    // 3) Sheet fallback: SaleForecast (Q) and Payroll_App (P)
+    // 3) Sheet forecast (WeekStart + Payroll_App + SaleForecast)
     const resolvedLocation =
       locationName || inferSingleLocationName(departmentIds) || undefined;
 
     let payrollForecastGBP: number | null = null;
-
     if (resolvedLocation) {
-      const f = await readWeeklyForecastFromSheet(resolvedLocation);
+      const f = await readWeeklyForecastFromSheet(resolvedLocation, weekMonYmd);
       if (f.salesForecast != null && (!salesForecast || salesForecast === 0)) {
         salesForecast = f.salesForecast;
       }
@@ -246,18 +330,21 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4) Target % resolution: Planday > site fallback
+    // 4) Target %
     let targetPct: number | null = null;
     let targetSource: "planday" | "fallback" | "none" = "none";
     if (plandayTargetPct != null) {
       targetPct = plandayTargetPct;
       targetSource = "planday";
-    } else if (resolvedLocation && PAYROLL_TARGET_FALLBACK[resolvedLocation] != null) {
+    } else if (
+      resolvedLocation &&
+      PAYROLL_TARGET_FALLBACK[resolvedLocation] != null
+    ) {
       targetPct = PAYROLL_TARGET_FALLBACK[resolvedLocation];
       targetSource = "fallback";
     }
 
-    // 5) Derived percentages
+    // 5) Derived
     const payrollPctActual =
       salesActual > 0 ? (wagesToDateGBP / salesActual) * 100 : null;
 
@@ -288,23 +375,25 @@ export async function POST(req: Request) {
         locationResolved: resolvedLocation,
       },
       totals: {
-        // BACKWARDS COMPAT: wagesGBP = "so far"
+        // backwards compat
         wagesGBP: Number(wagesToDateGBP.toFixed(2)),
 
-        wagesToDateGBP: Number(wagesToDateGBP.toFixed(2)), // Mon–yesterday
-        wagesWeekGBP: Number(wagesWeekGBP.toFixed(2)),     // full week scheduled
-
-        // Sheet / forecasted cost for the week (Payroll_App)
+        wagesToDateGBP: Number(wagesToDateGBP.toFixed(2)),
+        wagesWeekGBP: Number(wagesWeekGBP.toFixed(2)),
         payrollForecastGBP:
-          payrollForecastGBP != null ? Number(payrollForecastGBP.toFixed(2)) : null,
+          payrollForecastGBP != null
+            ? Number(payrollForecastGBP.toFixed(2))
+            : null,
 
-        salesActual: Math.round(salesActual),         // Mon–yesterday
-        salesForecast: Math.round(salesForecast),     // full week forecast (Planday or sheet)
+        salesActual: Math.round(salesActual),
+        salesForecast: Math.round(salesForecast),
 
         payrollPctActual:
           payrollPctActual != null ? Number(payrollPctActual.toFixed(2)) : null,
         payrollPctForecast:
-          payrollPctForecast != null ? Number(payrollPctForecast.toFixed(2)) : null,
+          payrollPctForecast != null
+            ? Number(payrollPctForecast.toFixed(2))
+            : null,
         targetPct,
         variancePct,
         varianceGBP,
@@ -312,12 +401,15 @@ export async function POST(req: Request) {
       sources: {
         wages: "planday:labour(scheduled, mon-sun + so-far)",
         sales:
-          "planday:revenue (week). If missing, SaleForecast from Google Sheet column Q",
+          "planday:revenue (week). SaleForecast from sheet if Planday budgets missing",
         target: targetSource,
         forecastsSheet: resolvedLocation ? `sheet tab = ${resolvedLocation}` : "n/a",
       },
     });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message || "Failed" },
+      { status: 500 }
+    );
   }
 }
