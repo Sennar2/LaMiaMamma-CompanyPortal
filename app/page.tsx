@@ -554,14 +554,18 @@ const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
     })();
   }, [selectedLocation, DEPTS_BY_NAME]);
 
-  /* Live Payroll (THIS WEEK) — try Planday; if route missing, show n/a gracefully */
+   /* Live Payroll (THIS WEEK) — scheduled cost vs sales */
   useEffect(() => {
     if (!selectedLocation) return;
 
-    const { start, end } = weekRangeLondon(todayYmd());
+    const ymdToday = todayYmd();
+
+    const { start, end } = weekRangeLondon(ymdToday);
     const departmentIds =
       selectedLocation === "All"
-        ? PLANDAY_LOCATIONS.map((l: any) => (l.plandayDepartmentId != null ? String(l.plandayDepartmentId) : null)).filter(Boolean)
+        ? PLANDAY_LOCATIONS.map((l: any) =>
+            l.plandayDepartmentId != null ? String(l.plandayDepartmentId) : null
+          ).filter(Boolean)
         : DEPTS_BY_NAME[selectedLocation.toLowerCase()] || [];
 
     if (!departmentIds.length) {
@@ -578,58 +582,67 @@ const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
         const resp = await fetch("/api/planday/payroll", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ departmentIds, start, end }),
+          // NOTE: payroll route derives week from anchorYmd
+          body: JSON.stringify({
+            departmentIds,
+            anchorYmd: ymdToday,
+            locationName: selectedLocation === "All" ? undefined : selectedLocation,
+          }),
         });
 
         if (!resp.ok) {
-          // If the route is missing (404) or server error: show n/a, don’t crash
+          // fall back to static targets if API fails
           setWeekWages(0);
           setWeekPayrollPct(null);
-          // fallback target only if single-site selected
-          setWeekPayrollTargetPct(selectedLocation !== "All" ? PAYROLL_TARGET_FALLBACK[selectedLocation] ?? null : null);
+          setWeekPayrollTargetPct(
+            selectedLocation !== "All"
+              ? PAYROLL_TARGET_FALLBACK[selectedLocation] ?? null
+              : null
+          );
           setPayrollLiveSource("none");
           return;
         }
 
         const j = await resp.json();
-        let wages = 0;
-        let sales = 0;
-        let apiPct: number | null = null;
-        let apiTarget: number | null = null;
 
-        if (j?.totals) {
-          wages = Number(j.totals.wagesActual ?? 0);
-          sales = Number(j.totals.salesActual ?? 0);
-          apiPct = typeof j.totals.payrollPct === "number" ? Number(j.totals.payrollPct) : null;
-          apiTarget = typeof j.totals.targetPct === "number" ? Number(j.totals.targetPct) : null;
-        } else if (Array.isArray(j?.byDept)) {
-          for (const r of j.byDept) {
-            wages += Number(r.wagesActual ?? 0);
-            sales += Number(r.salesActual ?? 0);
-          }
-          apiPct = sales > 0 ? (wages / sales) * 100 : null;
-          apiTarget = null; // unless your API returns an overall target
-        }
+        const totals = j?.totals || {};
+        const sources = j?.sources || {};
 
-        const actualPct = sales > 0 ? (wages / sales) * 100 : apiPct ?? null;
+        // new field names from /api/planday/payroll
+        const wages = Number(totals.wagesGBP ?? 0);
+        const salesActual = Number(totals.salesActual ?? 0);
+        const payrollPctActual =
+          typeof totals.payrollPctActual === "number"
+            ? Number(totals.payrollPctActual)
+            : salesActual > 0
+            ? (wages / salesActual) * 100
+            : null;
 
-        let targetPct: number | null = null;
-        if (typeof apiTarget === "number") {
-          targetPct = apiTarget;
-        } else if (selectedLocation !== "All") {
-          targetPct = PAYROLL_TARGET_FALLBACK[selectedLocation] ?? null;
-        } else {
-          targetPct = null;
-        }
+        const targetPct =
+          typeof totals.targetPct === "number"
+            ? Number(totals.targetPct)
+            : selectedLocation !== "All"
+            ? PAYROLL_TARGET_FALLBACK[selectedLocation] ?? null
+            : null;
 
         setWeekWages(wages);
-        setWeekPayrollPct(actualPct != null ? Number(actualPct) : null);
+        setWeekPayrollPct(
+          payrollPctActual != null ? Number(payrollPctActual) : null
+        );
         setWeekPayrollTargetPct(targetPct);
-        setPayrollLiveSource("planday");
+
+        // If the backend says target came from Planday, keep the “Live” label
+        setPayrollLiveSource(
+          sources?.target === "planday" ? "planday" : "fallback"
+        );
       } catch {
         setWeekWages(0);
         setWeekPayrollPct(null);
-        setWeekPayrollTargetPct(selectedLocation !== "All" ? PAYROLL_TARGET_FALLBACK[selectedLocation] ?? null : null);
+        setWeekPayrollTargetPct(
+          selectedLocation !== "All"
+            ? PAYROLL_TARGET_FALLBACK[selectedLocation] ?? null
+            : null
+        );
         setPayrollLiveSource("none");
       } finally {
         setPayrollLoading(false);
