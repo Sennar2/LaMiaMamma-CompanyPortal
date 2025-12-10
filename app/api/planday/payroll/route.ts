@@ -7,6 +7,23 @@ import { LOCATIONS } from "@/data/locations";
 const WEEK_FORECAST_CSV_BASE =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSxZeFz50aJUNKILXl3GqdQW-_CCXO4-6aizsQbFMXjsL4q24iJV1zhWkEeT-wbjl4psDOT3mHdrO7U/pub?output=csv";
 
+// If your sheet tab names differ from location names, map them here
+const SHEET_TAB_BY_LOCATION: Record<string, string> = {
+  "La Mia Mamma - Chelsea": "La Mia Mamma - Chelsea",
+  "La Mia Mamma - Hollywood Road": "La Mia Mamma - Hollywood Road",
+  "La Mia Mamma - Notting Hill": "La Mia Mamma - Notting Hill",
+  "La Mia Mamma - Battersea": "La Mia Mamma - Battersea",
+  "Made in Italy - Chelsea": "Made in Italy - Chelsea",
+  "Made in Italy - Battersea": "Made in Italy - Battersea",
+  "Fish and Bubbles - Fulham": "Fish and Bubbles - Fulham",
+  "Fish and Bubbles - Notting Hill": "Fish and Bubbles - Notting Hill",
+  "All": "Overview",
+
+  // If you have different tab names, put them on the RIGHT side, e.g.
+  // "La Mia Mamma - Chelsea": "LMM Chelsea",
+};
+
+
 // If Planday doesn’t give a payroll target %, fall back per-site here
 const PAYROLL_TARGET_FALLBACK: Record<string, number> = {
   "La Mia Mamma - Chelsea": 35,
@@ -315,13 +332,19 @@ export async function POST(req: Request) {
       // keep zeros
     }
 
-    // 3) Sheet forecast (WeekStart + Payroll_App + SaleForecast)
+        // 3) Sheet forecast: WeekStart + Payroll_App + SaleForecast
     const resolvedLocation =
       locationName || inferSingleLocationName(departmentIds) || undefined;
 
+    // Map location name → actual tab name (fallback to same string)
+    const sheetTabName = resolvedLocation
+      ? SHEET_TAB_BY_LOCATION[resolvedLocation] ?? resolvedLocation
+      : undefined;
+
     let payrollForecastGBP: number | null = null;
-    if (resolvedLocation) {
-      const f = await readWeeklyForecastFromSheet(resolvedLocation, weekMonYmd);
+
+    if (sheetTabName) {
+      const f = await readWeeklyForecastFromSheet(sheetTabName, weekMonYmd);
       if (f.salesForecast != null && (!salesForecast || salesForecast === 0)) {
         salesForecast = f.salesForecast;
       }
@@ -329,6 +352,7 @@ export async function POST(req: Request) {
         payrollForecastGBP = f.payrollForecastGBP;
       }
     }
+
 
     // 4) Target %
     let targetPct: number | null = null;
@@ -398,12 +422,12 @@ export async function POST(req: Request) {
         variancePct,
         varianceGBP,
       },
-      sources: {
+        sources: {
         wages: "planday:labour(scheduled, mon-sun + so-far)",
         sales:
           "planday:revenue (week). SaleForecast from sheet if Planday budgets missing",
         target: targetSource,
-        forecastsSheet: resolvedLocation ? `sheet tab = ${resolvedLocation}` : "n/a",
+        forecastsSheet: sheetTabName ? `sheet tab = ${sheetTabName}` : "n/a",
       },
     });
   } catch (e: any) {
