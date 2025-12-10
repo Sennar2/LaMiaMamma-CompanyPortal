@@ -3,7 +3,7 @@ import { LOCATIONS } from "@/data/locations";
 
 /** ---------- Config ---------- **/
 
-// Published CSV (each tab is a location, columns: WeekStart, Payroll_App, SaleForecast)
+// Base published CSV URL (NO sheet param, we will add ?gid=...)
 const WEEK_FORECAST_CSV_BASE =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSxZeFz50aJUNKILXl3GqdQW-_CCXO4-6aizsQbFMXjsL4q24iJV1zhWkEeT-wbjl4psDOT3mHdrO7U/pub?output=csv";
 
@@ -19,20 +19,22 @@ const PAYROLL_TARGET_FALLBACK: Record<string, number> = {
   "Fish and Bubbles - Notting Hill": 32,
 };
 
-// Map location names to Google Sheet tab names.
-// RIGHT-HAND SIDE must match the tab names in your sheet.
-const SHEET_TAB_BY_LOCATION: Record<string, string> = {
-  "La Mia Mamma - Chelsea": "La Mia Mamma - Chelsea",
-  "La Mia Mamma - Hollywood Road": "La Mia Mamma - Hollywood Road",
-  "La Mia Mamma - Notting Hill": "La Mia Mamma - Notting Hill",
-  "La Mia Mamma - Battersea": "La Mia Mamma - Battersea",
-  "Made in Italy - Chelsea": "Made in Italy - Chelsea",
-  "Made in Italy - Battersea": "Made in Italy - Battersea",
-  "Fish and Bubbles - Fulham": "Fish and Bubbles - Fulham",
-  "Fish and Bubbles - Notting Hill": "Fish and Bubbles - Notting Hill",
+// 🔴 IMPORTANT: fill these in with the gid for each tab (from the URL)
+const SHEET_GID_BY_LOCATION: Record<string, string> = {
+  // Example (YOU MUST REPLACE THE GID VALUES WITH REAL ONES):
+  // "La Mia Mamma - Chelsea": "123456789",
+  // "La Mia Mamma - Hollywood Road": "987654321",
 
-  // Example if a tab name is different:
-  // "La Mia Mamma - Chelsea": "LMM Chelsea",
+  // Put placeholders so it compiles – update these!
+  "La Mia Mamma - Chelsea": "700598512",
+  "La Mia Mamma - Hollywood Road": "1176380368",
+  "La Mia Mamma - Notting Hill": "1781816110",
+  "La Mia Mamma - Battersea": "64745108",
+  "Made in Italy - Chelsea": "1970147212",
+  "Made in Italy - Battersea": "1982335053",
+  "Fish and Bubbles - Fulham": "1432231792",
+  "Fish and Bubbles - Notting Hill": "134165847",
+  "GroupOverview": "0",
 };
 
 /** ---------- Types ---------- **/
@@ -127,12 +129,12 @@ function parseCSV(text: string): string[][] {
  * Read one week's forecast from the Google Sheet.
  * WeekStart is UK dd/mm/yyyy or yyyy-mm-dd.
  */
-async function readWeeklyForecastFromSheet(
-  tabName: string,
+async function readWeeklyForecastFromSheetByGid(
+  gid: string,
   weekMonYmd: string
 ): Promise<{ salesForecast?: number; payrollForecastGBP?: number }> {
   try {
-    const url = `${WEEK_FORECAST_CSV_BASE}&sheet=${encodeURIComponent(tabName)}`;
+    const url = `${WEEK_FORECAST_CSV_BASE}&gid=${encodeURIComponent(gid)}`;
     const resp = await fetch(url);
     if (!resp.ok) return {};
     const text = await resp.text();
@@ -331,20 +333,22 @@ export async function POST(req: Request) {
       // keep zeros
     }
 
-    // 3) Sheet forecast: WeekStart + Payroll_App + SaleForecast
+    // 3) Sheet forecast: WeekStart + Payroll_App + SaleForecast, by gid
     const resolvedLocation =
       locationName || inferSingleLocationName(departmentIds) || undefined;
 
-    const sheetTabName = resolvedLocation
-      ? SHEET_TAB_BY_LOCATION[resolvedLocation] ?? resolvedLocation
+    const sheetGid = resolvedLocation
+      ? SHEET_GID_BY_LOCATION[resolvedLocation]
       : undefined;
 
     let payrollForecastGBP: number | null = null;
 
-    if (sheetTabName) {
-      const f = await readWeeklyForecastFromSheet(sheetTabName, weekMonYmd);
+    if (sheetGid) {
+      const f = await readWeeklyForecastFromSheetByGid(
+        sheetGid,
+        weekMonYmd
+      );
 
-      // Always trust sheet for forecast if present
       if (f.salesForecast != null) {
         salesForecast = f.salesForecast;
       }
@@ -426,7 +430,7 @@ export async function POST(req: Request) {
         sales:
           "planday:revenue (week). SaleForecast from sheet when available",
         target: targetSource,
-        forecastsSheet: sheetTabName ? `sheet tab = ${sheetTabName}` : "n/a",
+        forecastsSheet: sheetGid ? `gid=${sheetGid}` : "n/a",
       },
     });
   } catch (e: any) {
