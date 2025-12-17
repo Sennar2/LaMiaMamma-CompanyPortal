@@ -1,93 +1,142 @@
 // src/utils/tradingCalendar.ts
 
-// Simple type describing a period definition
-export type PeriodDef = {
-  period: string;      // e.g. "P1"
-  startWeek: number;   // inclusive, 1-based
-  endWeek: number;     // inclusive, 1-based
+/**
+ * Trading calendar utilities.
+ *
+ * - Year-aware period/quarter mapping
+ * - Supports 52-week and 53-week years
+ *
+ * 2025:
+ *  P1  : W1–4
+ *  P2  : W5–8
+ *  P3  : W9–13
+ *  P4  : W14–17
+ *  P5  : W18–21
+ *  P6  : W22–26
+ *  P7  : W27–30
+ *  P8  : W31–34
+ *  P9  : W35–39
+ *  P10 : W40–43
+ *  P11 : W44–47
+ *  P12 : W48–52
+ *
+ * 2026:
+ *  Same pattern, but P12 gets W48–53 (53-week year).
+ */
+
+type PeriodRange = {
+  period: string;   // "P1".."P12"
+  quarter: string;  // "Q1".."Q4"
+  start: number;    // week number (1-based)
+  end: number;      // week number (inclusive)
+};
+
+const YEAR_PERIOD_DEFS: Record<number, PeriodRange[]> = {
+  2025: [
+    { period: 'P1',  quarter: 'Q1', start: 1,  end: 4 },
+    { period: 'P2',  quarter: 'Q1', start: 5,  end: 8 },
+    { period: 'P3',  quarter: 'Q1', start: 9,  end: 13 },
+
+    { period: 'P4',  quarter: 'Q2', start: 14, end: 17 },
+    { period: 'P5',  quarter: 'Q2', start: 18, end: 21 },
+    { period: 'P6',  quarter: 'Q2', start: 22, end: 26 },
+
+    { period: 'P7',  quarter: 'Q3', start: 27, end: 30 },
+    { period: 'P8',  quarter: 'Q3', start: 31, end: 34 },
+    { period: 'P9',  quarter: 'Q3', start: 35, end: 39 },
+
+    { period: 'P10', quarter: 'Q4', start: 40, end: 43 },
+    { period: 'P11', quarter: 'Q4', start: 44, end: 47 },
+    { period: 'P12', quarter: 'Q4', start: 48, end: 52 },
+  ],
+
+  2026: [
+    { period: 'P1',  quarter: 'Q1', start: 1,  end: 4 },
+    { period: 'P2',  quarter: 'Q1', start: 5,  end: 8 },
+    { period: 'P3',  quarter: 'Q1', start: 9,  end: 13 },
+
+    { period: 'P4',  quarter: 'Q2', start: 14, end: 17 },
+    { period: 'P5',  quarter: 'Q2', start: 18, end: 21 },
+    { period: 'P6',  quarter: 'Q2', start: 22, end: 26 },
+
+    { period: 'P7',  quarter: 'Q3', start: 27, end: 30 },
+    { period: 'P8',  quarter: 'Q3', start: 31, end: 34 },
+    { period: 'P9',  quarter: 'Q3', start: 35, end: 39 },
+
+    { period: 'P10', quarter: 'Q4', start: 40, end: 43 },
+    { period: 'P11', quarter: 'Q4', start: 44, end: 47 },
+    // 53-week year: put W53 into P12
+    { period: 'P12', quarter: 'Q4', start: 48, end: 53 },
+  ],
 };
 
 /**
- * Helper to parse "W1", "W25" etc. into numeric week.
+ * Fallback definition used if a year isn’t explicitly listed.
+ * Mirrors the 2025 52-week structure.
  */
-export function parseWeekNumFromLabel(weekLabel: string | number | undefined): number {
-  const num = parseInt(String(weekLabel ?? "").replace(/[^\d]/g, ""), 10);
+const DEFAULT_PERIOD_DEFS: PeriodRange[] = YEAR_PERIOD_DEFS[2025];
+
+/**
+ * Normalise a "Wxx" label into a week number (e.g. "W25" -> 25).
+ */
+function parseWeekLabel(weekLabel: string): number {
+  const num = parseInt(weekLabel.replace(/[^\d]/g, ''), 10);
   return Number.isNaN(num) ? 0 : num;
 }
 
 /**
- * Year-specific period definitions.
- * 
- * You can tweak these freely per year.
- * 2025 is your current 4-4-5 pattern:
- *  P1 W1–4, P2 W5–8, P3 W9–13, ..., P12 W48–52
- * 
- * 2026 is an example: same pattern but P12 gets the extra W53.
- * If you later want a different split, just change the numbers here.
+ * Returns the period label (e.g. "P5") for a given week + year.
+ * If no match is found, returns "P?".
  */
-export const TRADING_CALENDARS: Record<number, PeriodDef[]> = {
-  2025: [
-    { period: "P1",  startWeek:  1, endWeek:  4 },
-    { period: "P2",  startWeek:  5, endWeek:  8 },
-    { period: "P3",  startWeek:  9, endWeek: 13 },
-    { period: "P4",  startWeek: 14, endWeek: 17 },
-    { period: "P5",  startWeek: 18, endWeek: 21 },
-    { period: "P6",  startWeek: 22, endWeek: 26 },
-    { period: "P7",  startWeek: 27, endWeek: 30 },
-    { period: "P8",  startWeek: 31, endWeek: 34 },
-    { period: "P9",  startWeek: 35, endWeek: 39 },
-    { period: "P10", startWeek: 40, endWeek: 43 },
-    { period: "P11", startWeek: 44, endWeek: 47 },
-    { period: "P12", startWeek: 48, endWeek: 52 },
-  ],
+export function getPeriodForWeek(weekLabel: string, year: number): string {
+  const weekNum = parseWeekLabel(weekLabel);
+  if (!weekNum) return 'P?';
 
-  // You can adjust this to the *actual* 2026 plan.
-  // For now: same as 2025 but P12 = W48–53 (53-week year).
-  2026: [
-    { period: "P1",  startWeek:  1, endWeek:  4 },
-    { period: "P2",  startWeek:  5, endWeek:  8 },
-    { period: "P3",  startWeek:  9, endWeek: 13 },
-    { period: "P4",  startWeek: 14, endWeek: 17 },
-    { period: "P5",  startWeek: 18, endWeek: 21 },
-    { period: "P6",  startWeek: 22, endWeek: 26 },
-    { period: "P7",  startWeek: 27, endWeek: 30 },
-    { period: "P8",  startWeek: 31, endWeek: 34 },
-    { period: "P9",  startWeek: 35, endWeek: 39 },
-    { period: "P10", startWeek: 40, endWeek: 43 },
-    { period: "P11", startWeek: 44, endWeek: 47 },
-    { period: "P12", startWeek: 48, endWeek: 53 }, // 6-week period
-  ],
-};
-
-/**
- * Get the calendar for a given trading year.
- * Falls back to 2025 if the year isn't configured yet.
- */
-export function getCalendarForYear(year: number): PeriodDef[] {
-  return TRADING_CALENDARS[year] ?? TRADING_CALENDARS[2025];
-}
-
-/**
- * Map a week label ("W25") + year to a period label ("P5", "P12", etc.)
- */
-export function getPeriodForWeek(weekLabel: string | number, year: number): string {
-  const weekNum = parseWeekNumFromLabel(weekLabel);
-  if (!weekNum) return "P?";
-
-  const calendar = getCalendarForYear(year);
-  const match = calendar.find(
-    (p) => weekNum >= p.startWeek && weekNum <= p.endWeek
+  const defs = YEAR_PERIOD_DEFS[year] || DEFAULT_PERIOD_DEFS;
+  const match = defs.find(
+    (d) => weekNum >= d.start && weekNum <= d.end,
   );
 
-  return match?.period ?? "P?";
+  return match ? match.period : 'P?';
 }
 
 /**
- * Period → Quarter. (P1–3=Q1, 4–6=Q2, 7–9=Q3, 10–12=Q4)
+ * Returns the quarter ("Q1".."Q4") for a given period label.
+ * Falls back to "Q?" if it can’t infer the quarter.
  */
 export function getQuarterForPeriod(periodLabel: string): string {
-  const n = parseInt(String(periodLabel).replace(/[^\d]/g, ""), 10);
-  if (!n || Number.isNaN(n)) return "Q?";
-  const q = Math.floor((n - 1) / 3) + 1;
-  return `Q${q}`;
+  const num = parseInt(periodLabel.replace(/[^\d]/g, ''), 10);
+  if (!num) return 'Q?';
+
+  if (num >= 1 && num <= 3) return 'Q1';
+  if (num >= 4 && num <= 6) return 'Q2';
+  if (num >= 7 && num <= 9) return 'Q3';
+  if (num >= 10 && num <= 12) return 'Q4';
+  return 'Q?';
+}
+
+/**
+ * Returns all week labels ("W1".."W53") belonging to a given period in a given year.
+ * Example: getWeeksForPeriod("P5", 2025) -> ["W18","W19","W20","W21"]
+ */
+export function getWeeksForPeriod(
+  periodLabel: string,
+  year: number,
+): string[] {
+  const defs = YEAR_PERIOD_DEFS[year] || DEFAULT_PERIOD_DEFS;
+  const periodNum = parseInt(periodLabel.replace(/[^\d]/g, ''), 10);
+  if (!periodNum) return [];
+
+  const match = defs.find((d) => {
+    const pNum = parseInt(d.period.replace(/[^\d]/g, ''), 10);
+    return pNum === periodNum;
+  });
+
+  if (!match) return [];
+
+  const weeks: string[] = [];
+  for (let w = match.start; w <= match.end; w += 1) {
+    weeks.push(`W${w}`);
+  }
+  return weeks;
 }
