@@ -11,6 +11,13 @@ import KPIBlock from '../../src/components/financial/KPIBlock';
 import RankingTable from '../../src/components/financial/RankingTable';
 import ChartSection from '../../src/components/financial/ChartSection';
 
+// Year-aware trading calendar helpers
+import {
+  getPeriodForWeek,
+  getQuarterForPeriod,
+  getWeeksForPeriod,
+} from '../../src/utils/tradingCalendar';
+
 // ─────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────
@@ -26,7 +33,7 @@ const YEAR_SHEETS: Record<string, string> = {
     process.env.NEXT_PUBLIC_SHEET_ID_2025 ||
     '1PPVSEcZ6qLOEK2Z0uRLgXCnS_maazWFO_yMY648Oq1g',
 
-  // 2026 – put the new sheet ID here
+  // 2026 – new sheet
   '2026':
     process.env.NEXT_PUBLIC_SHEET_ID_2026 ||
     '1VRla3bQRJENs5meWdWd2i5UH94FMpPoKLYrMNZCVm9M',
@@ -82,6 +89,7 @@ const DRINK_TARGET = 5.5; // %
 // ─────────────────────────────────────────────────────────────
 // Small helpers
 // ─────────────────────────────────────────────────────────────
+
 function parseWeekNum(weekStr: string | number | undefined) {
   const num = parseInt(String(weekStr ?? '').replace(/[^\d]/g, ''), 10);
   return Number.isNaN(num) ? 0 : num;
@@ -94,8 +102,12 @@ function getISOWeek(date = new Date()) {
   const dayNum = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return Math.min(52, weekNo);
+  const weekNo = Math.ceil(
+    ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
+  );
+
+  // allow up to 53 for 53-week years
+  return Math.min(53, weekNo);
 }
 
 function getCurrentWeekLabel() {
@@ -188,7 +200,7 @@ function computeInsightsBundle(rows: any[]) {
     __weekNum: parseWeekNum(r.Week),
   }));
 
-  const currentWeekNum = getISOWeek(); // e.g. 44
+  const currentWeekNum = getISOWeek();
   const snapshotWeekNum =
     currentWeekNum - 1 <= 0 ? currentWeekNum : currentWeekNum - 1;
 
@@ -266,26 +278,6 @@ function computeInsightsBundle(rows: any[]) {
   };
 }
 
-// Week → Period/Quarter map (W1..W52)
-const WEEK_TO_PERIOD_QUARTER = Array.from({ length: 52 }, (_, i) => {
-  const w = i + 1;
-  let period: string, quarter: string;
-  if (w <= 13) {
-    quarter = 'Q1';
-    period = w <= 4 ? 'P1' : w <= 8 ? 'P2' : 'P3';
-  } else if (w <= 26) {
-    quarter = 'Q2';
-    period = w <= 17 ? 'P4' : w <= 21 ? 'P5' : 'P6';
-  } else if (w <= 39) {
-    quarter = 'Q3';
-    period = w <= 30 ? 'P7' : w <= 34 ? 'P8' : 'P9';
-  } else {
-    quarter = 'Q4';
-    period = w <= 43 ? 'P10' : w <= 47 ? 'P11' : 'P12';
-  }
-  return { week: `W${w}`, period, quarter };
-});
-
 // ─────────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────────
@@ -341,7 +333,9 @@ export default function FinancialPage() {
 
   // 2) Permission
   const role = (profile?.role || '').toLowerCase();
-  const canView = ['admin', 'operation', 'ops', 'manager', 'user'].includes(role);
+  const canView = ['admin', 'operation', 'ops', 'manager', 'user'].includes(
+    role,
+  );
 
   // 3) Locations the user can view
   const [allowedLocations, setAllowedLocations] = useState<string[]>([]);
@@ -409,18 +403,24 @@ export default function FinancialPage() {
     })();
   }, [location, year]);
 
-  // 6) Merge Week → Period/Quarter
+  // 6) Merge Week → Period/Quarter using the year-specific trading calendar
   const mergedRows = useMemo(() => {
+    if (!rawRows.length) return [];
+
+    const yearNum = Number(year) || new Date().getFullYear();
+
     return rawRows.map((item) => {
-      const w = String(item.Week || '').trim();
-      const match = WEEK_TO_PERIOD_QUARTER.find((x) => x.week === w);
+      const weekLabel = String(item.Week || '').trim();
+      const periodLabel = getPeriodForWeek(weekLabel, yearNum);
+      const quarterLabel = getQuarterForPeriod(periodLabel);
+
       return {
         ...item,
-        Period: match?.period || 'P?',
-        Quarter: match?.quarter || 'Q?',
+        Period: periodLabel,
+        Quarter: quarterLabel,
       };
     });
-  }, [rawRows]);
+  }, [rawRows, year]);
 
   // 7) Group by Period/Quarter if needed
   function groupMergedRowsBy(bucketKey: 'Period' | 'Quarter'): any[] {
@@ -459,14 +459,16 @@ export default function FinancialPage() {
   }, [mergedRows, period]);
 
   // 8) Insights + Compliance snapshot (based on last completed week)
-  const insights = useMemo(() => computeInsightsBundle(mergedRows), [mergedRows]);
+  const insights = useMemo(
+    () => computeInsightsBundle(mergedRows),
+    [mergedRows],
+  );
   const currentWeekNow = getCurrentWeekLabel();
 
   // ─────────────────────────────────────────────────────────────
   // 9) Ranking (admins / ops only) — week + period, multi-year, % + £
   // ─────────────────────────────────────────────────────────────
 
-  // This holds all rows per store (for the year)
   const [rankingSource, setRankingSource] = useState<
     { loc: string; rows: any[] }[]
   >([]);
@@ -477,7 +479,9 @@ export default function FinancialPage() {
 
   const [rankingWeekOptions, setRankingWeekOptions] = useState<string[]>([]);
   const [selectedRankingWeek, setSelectedRankingWeek] = useState<string>('');
-  const [rankingPeriodOptions, setRankingPeriodOptions] = useState<string[]>([]);
+  const [rankingPeriodOptions, setRankingPeriodOptions] = useState<string[]>(
+    [],
+  );
   const [selectedRankingPeriod, setSelectedRankingPeriod] =
     useState<string>('');
 
@@ -521,17 +525,23 @@ export default function FinancialPage() {
 
         setRankingSource(all);
 
-        // collect available weeks & periods
+        // collect available weeks & periods (year-aware)
         const weekSet = new Set<string>();
         const periodSet = new Set<string>();
+        const yearNum = Number(year) || new Date().getFullYear();
 
         for (const { rows } of all) {
           for (const r of rows) {
             if (!rowHasData(r)) continue;
             const wLabel = String(r.Week || '').trim();
-            if (wLabel) weekSet.add(wLabel);
-            const match = WEEK_TO_PERIOD_QUARTER.find((x) => x.week === wLabel);
-            if (match) periodSet.add(match.period);
+            if (!wLabel) continue;
+
+            weekSet.add(wLabel);
+
+            const periodLabel = getPeriodForWeek(wLabel, yearNum);
+            if (periodLabel && periodLabel !== 'P?') {
+              periodSet.add(periodLabel);
+            }
           }
         }
 
@@ -558,11 +568,10 @@ export default function FinancialPage() {
         });
         setRankingPeriodOptions(periodOptions);
 
+        const yearNumForSnap = yearNum;
         const snapshotWeekLabel = `W${snapshotWeekNum}`;
-        const snapMatch = WEEK_TO_PERIOD_QUARTER.find(
-          (x) => x.week === snapshotWeekLabel,
-        );
-        let defaultPeriod = snapMatch?.period || '';
+        let defaultPeriod = getPeriodForWeek(snapshotWeekLabel, yearNumForSnap);
+        if (defaultPeriod === 'P?') defaultPeriod = '';
         if (defaultPeriod && !periodSet.has(defaultPeriod)) {
           defaultPeriod = '';
         }
@@ -641,10 +650,10 @@ export default function FinancialPage() {
     // ---- PERIOD RANKING ----
     if (selectedRankingPeriod) {
       const periodRows: any[] = [];
+      const yearNum = Number(year) || new Date().getFullYear();
 
-      const periodWeeks = WEEK_TO_PERIOD_QUARTER.filter(
-        (x) => x.period === selectedRankingPeriod,
-      ).map((x) => x.week);
+      // Get all weeks belonging to this period for the selected year
+      const periodWeeks = getWeeksForPeriod(selectedRankingPeriod, yearNum);
 
       for (const { loc, rows } of rankingSource) {
         const filtered = rows.filter(
@@ -704,7 +713,7 @@ export default function FinancialPage() {
     } else {
       setRankingPeriodData([]);
     }
-  }, [rankingSource, selectedRankingWeek, selectedRankingPeriod]);
+  }, [rankingSource, selectedRankingWeek, selectedRankingPeriod, year]);
 
   // 10) Chart config (preserves Theo lines)
   const chartConfig = {
