@@ -734,14 +734,15 @@ export default function FinancialDashboardPage() {
       </div>
 
       {/* Chart */}
-      {!loadingData && !fetchError && (
-        <ChartSection
-          activeTab={activeTab}
-          filteredData={filteredData}
-          chartConfig={chartConfig}
-          CSVLink={CSVLink}
-        />
-      )}
+{!loadingData && !fetchError && (
+  <ChartSection
+    activeTab={activeTab}
+    filteredData={filteredData}
+    chartConfig={chartConfig}
+    CSVLink={CSVLink}
+    periodView={period}   // 👈 "Week" / "Period" / "Quarter"
+  />
+)}
 
       <FinancialFooter />
     </div>
