@@ -880,14 +880,16 @@ export default function FinancialPage() {
       </div>
 
       {/* CHARTS */}
-      {!loadingData && !fetchError && (
-        <ChartSection
-          activeTab={activeTab}
-          filteredData={filteredData}
-          chartConfig={chartConfig}
-          CSVLink={CSVLink}
-        />
-      )}
+ {!loadingData && !fetchError && (
+  <ChartSection
+    activeTab={activeTab}
+    filteredData={filteredData}
+    chartConfig={chartConfig}
+    CSVLink={CSVLink}
+    periodView={period}   // 👈 "Week" / "Period" / "Quarter"
+  />
+)}
+
 
       {/* Space before ranking */}
       <div className="h-4 md:h-6" />
