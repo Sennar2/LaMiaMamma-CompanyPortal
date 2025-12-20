@@ -16,8 +16,6 @@ export default function ChartSection({
   filteredData,
   chartConfig,
   CSVLink,
-  // NEW: tells the chart if UI is on Week / Period / Quarter
-  periodView = "Week",
 }) {
   const baseLines = chartConfig[activeTab] || [];
 
@@ -39,7 +37,7 @@ export default function ChartSection({
 
   const formatPercent = (value) => {
     if (value == null || isNaN(Number(value))) return "";
-    const pct = Number(value); // can be positive or negative
+    const pct = Number(value);
     return pct.toFixed(1) + "%";
   };
 
@@ -176,14 +174,6 @@ export default function ChartSection({
     return [formatted, name];
   };
 
-  // X-axis key: Week / Period / Quarter
-  const xAxisKey =
-    periodView === "Period"
-      ? "Period"
-      : periodView === "Quarter"
-      ? "Quarter"
-      : "Week";
-
   // --------------------------------------------------
 
   return (
@@ -313,8 +303,9 @@ export default function ChartSection({
       <div style={{ width: "100%", height: "300px" }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={displayData}>
-            {/* 👇 P1…P12, Q1…Q4, or W1…W52 depending on view */}
-            <XAxis dataKey={xAxisKey} />
+            {/* IMPORTANT: always use `Week` – in Period/Quarter view your data
+                already sets Week = "P1"/"P2"/"Q1"/etc. */}
+            <XAxis dataKey="Week" />
             <YAxis tickFormatter={yTickFormatter} />
             <Tooltip formatter={tooltipFormatter} />
             <Legend />
