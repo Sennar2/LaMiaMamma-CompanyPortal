@@ -891,14 +891,14 @@ export default function FinancialPage() {
 
       {/* CHARTS */}
       {!loadingData && !fetchError && (
-      <ChartSection
+<ChartSection
   activeTab={activeTab}
   filteredData={filteredData}
   chartConfig={chartConfig}
   CSVLink={CSVLink}
   periodView={period}   // 👈 ADD THIS
 />
-    )}
+)}
   
 
       {/* Space before ranking */}
