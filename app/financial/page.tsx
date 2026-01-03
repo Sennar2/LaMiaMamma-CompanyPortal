@@ -891,13 +891,15 @@ export default function FinancialPage() {
 
       {/* CHARTS */}
       {!loadingData && !fetchError && (
-        <ChartSection
-          activeTab={activeTab}
-          filteredData={filteredData}
-          chartConfig={chartConfig}
-          CSVLink={CSVLink}
-        />
-      )}
+      <ChartSection
+  activeTab={activeTab}
+  filteredData={filteredData}
+  chartConfig={chartConfig}
+  CSVLink={CSVLink}
+  periodView={period}   // 👈 ADD THIS
+/>
+    )}
+  
 
       {/* Space before ranking */}
       <div className="h-4 md:h-6" />
