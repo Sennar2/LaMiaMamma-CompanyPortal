@@ -24,8 +24,6 @@ export default function RankingTable({
 
   if (!rankingData || rankingData.length === 0) return null;
 
-  // ... rest of your RankingTable code unchanged ...
-
   // local toggle: show only % or % + £
   const [valueView, setValueView] = React.useState("both"); // "percent" | "both"
 
@@ -72,6 +70,13 @@ export default function RankingTable({
     return "£" + abs.toLocaleString("en-GB");
   }
 
+  // same as fmtMoney, but keeping name explicit for Sales/Budget
+  function fmtGBP(val) {
+    if (val == null || isNaN(val)) return "£–";
+    const abs = Math.round(Math.abs(val));
+    return "£" + abs.toLocaleString("en-GB");
+  }
+
   function fmtSalesVarMoney(val) {
     if (val == null || isNaN(val)) return "£0";
     const sign = val >= 0 ? "+" : "−";
@@ -88,6 +93,19 @@ export default function RankingTable({
     if (val == null || isNaN(val)) return "–";
     const sign = val >= 0 ? "+" : "";
     return `${sign}${val.toFixed(1)}%`;
+  }
+
+  // pull sales/budget safely from row using common keys
+  function getSalesValue(row) {
+    const v = row?.salesValue ?? row?.sales ?? row?.actualSales;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function getBudgetValue(row) {
+    const v = row?.budgetValue ?? row?.budget ?? row?.salesBudget;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
   }
 
   const activeLabel =
@@ -352,7 +370,7 @@ export default function RankingTable({
               borderCollapse: "collapse",
               fontSize: "0.8rem",
               lineHeight: 1.4,
-              minWidth: "700px",
+              minWidth: "820px", // bumped a bit for the new Sales column
             }}
           >
             <thead>
@@ -373,6 +391,18 @@ export default function RankingTable({
                 >
                   Location
                 </th>
+
+                {/* NEW: Sales column */}
+                <th
+                  style={{
+                    padding: "0.5rem 0.75rem",
+                    fontWeight: 500,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Sales (£)
+                </th>
+
                 <th
                   style={{
                     padding: "0.5rem 0.75rem",
@@ -446,15 +476,15 @@ export default function RankingTable({
                   payrollTarget
                 );
                 const foodStyle = colorForThreshold(row.foodPct, foodTarget);
-                const drinkStyle = colorForThreshold(
-                  row.drinkPct,
-                  drinkTarget
-                );
+                const drinkStyle = colorForThreshold(row.drinkPct, drinkTarget);
                 const salesStyle = colorForSalesVar(row.salesVar);
 
                 const payrollValue = row.payrollValue;
                 const foodValue = row.foodValue;
                 const drinkValue = row.drinkValue;
+
+                const salesValue = getSalesValue(row);
+                const budgetValue = getBudgetValue(row);
 
                 return (
                   <tr
@@ -468,9 +498,7 @@ export default function RankingTable({
                       cursor: rowsClickable ? "pointer" : "default",
                     }}
                     onClick={
-                      rowsClickable
-                        ? () => onRowClick(row.location)
-                        : undefined
+                      rowsClickable ? () => onRowClick(row.location) : undefined
                     }
                   >
                     {/* Location */}
@@ -493,6 +521,30 @@ export default function RankingTable({
                       >
                         {row.week || "-"}
                       </div>
+                    </td>
+
+                    {/* NEW: Sales column */}
+                    <td
+                      style={{
+                        padding: "0.75rem",
+                        fontWeight: 600,
+                        color: "#111827",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <div>{fmtGBP(salesValue)}</div>
+
+                      {valueView === "both" && budgetValue != null && (
+                        <div
+                          style={{
+                            fontSize: "0.7rem",
+                            fontWeight: 400,
+                            color: "#6b7280",
+                          }}
+                        >
+                          Budget {fmtGBP(budgetValue)}
+                        </div>
+                      )}
                     </td>
 
                     {/* Payroll */}
@@ -601,10 +653,8 @@ export default function RankingTable({
             marginTop: "0.75rem",
           }}
         >
-          Worst payroll % appears first.{" "}
-          Payroll colour is based on how far the average % for that
-          week/period is from the {payrollTarget}% target:
-          {" "}
+          Worst payroll % appears first. Payroll colour is based on how far the
+          average % for that week/period is from the {payrollTarget}% target:
           green ≤ 1pt over, amber 1–2pts over, red &gt; 2pts over.
         </div>
       </div>
