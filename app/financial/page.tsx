@@ -610,7 +610,7 @@ export default function FinancialPage() {
         );
         if (!match) continue;
 
-        const salesActual = match.Sales_Actual || 0;
+        const salesActual = match.Sales_Actual || 0; // Column B ✅
         const salesBudget = match.Sales_Budget || 0;
         const payrollActual = match.Payroll_Actual || 0;
         const foodActual = match.Food_Actual || 0;
@@ -630,6 +630,11 @@ export default function FinancialPage() {
         weekRows.push({
           location: loc,
           week: match.Week,
+
+          // ✅ Include actual/budget so RankingTable can show Sales column
+          Sales_Actual: salesActual,
+          Sales_Budget: salesBudget,
+
           payrollPct,
           foodPct,
           drinkPct,
@@ -670,7 +675,7 @@ export default function FinancialPage() {
         let drinkActualTotal = 0;
 
         for (const r of filtered) {
-          salesActualTotal += r.Sales_Actual || 0;
+          salesActualTotal += r.Sales_Actual || 0; // Column B ✅
           salesBudgetTotal += r.Sales_Budget || 0;
           payrollActualTotal += r.Payroll_Actual || 0;
           foodActualTotal += r.Food_Actual || 0;
@@ -697,6 +702,11 @@ export default function FinancialPage() {
         periodRows.push({
           location: loc,
           week: selectedRankingPeriod,
+
+          // ✅ Include actual/budget so RankingTable can show Sales column
+          Sales_Actual: salesActualTotal,
+          Sales_Budget: salesBudgetTotal,
+
           payrollPct,
           foodPct,
           drinkPct,
@@ -880,16 +890,14 @@ export default function FinancialPage() {
       </div>
 
       {/* CHARTS */}
-{!loadingData && !fetchError && (
-  <ChartSection
-    activeTab={activeTab}
-    filteredData={filteredData}
-    chartConfig={chartConfig}
-    CSVLink={CSVLink}
-  />
-)}
-
-
+      {!loadingData && !fetchError && (
+        <ChartSection
+          activeTab={activeTab}
+          filteredData={filteredData}
+          chartConfig={chartConfig}
+          CSVLink={CSVLink}
+        />
+      )}
 
       {/* Space before ranking */}
       <div className="h-4 md:h-6" />
