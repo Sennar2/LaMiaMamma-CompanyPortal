@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { CSVLink } from "react-csv";
 
 export default function RankingTable({
   rankingWeekData,
@@ -26,13 +27,27 @@ export default function RankingTable({
   // local toggle: show only % or % + £
   const [valueView, setValueView] = React.useState("both"); // "percent" | "both"
 
-  // ---------- helpers ----------
+  const rowsClickable = typeof onRowClick === "function";
+
+  const activeLabel = rankingView === "period" ? selectedPeriod : selectedWeek;
+
+  const title =
+    rankingView === "period"
+      ? `Site Ranking – ${activeLabel || "Period"}`
+      : `Site Ranking – ${activeLabel || "Week"}`;
+
+  const subtitle =
+    rankingView === "period"
+      ? "Showing selected period. Sorted by highest Payroll % (worst at the top)."
+      : "Showing selected week. Sorted by highest Payroll % (worst at the top).";
+
+  // ---------- styling helpers ----------
   function colorForPayroll(pct, target) {
     if (pct == null || isNaN(pct)) return { color: "#6b7280" };
     const diff = pct - target;
-    if (diff <= 1) return { color: "#059669" };
-    if (diff <= 2) return { color: "#f59e0b" };
-    return { color: "#dc2626" };
+    if (diff <= 1) return { color: "#059669" }; // green
+    if (diff <= 2) return { color: "#f59e0b" }; // amber
+    return { color: "#dc2626" }; // red
   }
 
   function colorForThreshold(val, target) {
@@ -45,56 +60,11 @@ export default function RankingTable({
     return { color: val >= 0 ? "#059669" : "#dc2626" };
   }
 
-  // Parses "£12,345.67" / "12,345" / 12345 / "12345" -> number
-  function parseMoney(val) {
-    if (val == null) return null;
-    if (typeof val === "number" && Number.isFinite(val)) return val;
-
-    const s = String(val).trim();
-    if (!s) return null;
-
-    // keep digits, minus, dot, comma
-    const cleaned = s.replace(/[^\d.,-]/g, "");
-
-    // handle "12,345.67" or "12.345,67"
-    // Strategy:
-    // - if both comma & dot exist: assume dot is decimal if it appears last, else comma
-    // - if only comma exists: treat comma as thousands unless it looks like decimal (2 digits after)
-    let normalized = cleaned;
-
-    const hasComma = normalized.includes(",");
-    const hasDot = normalized.includes(".");
-
-    if (hasComma && hasDot) {
-      const lastComma = normalized.lastIndexOf(",");
-      const lastDot = normalized.lastIndexOf(".");
-      if (lastDot > lastComma) {
-        // dot is decimal, remove commas
-        normalized = normalized.replace(/,/g, "");
-      } else {
-        // comma is decimal, remove dots and swap comma->dot
-        normalized = normalized.replace(/\./g, "").replace(/,/g, ".");
-      }
-    } else if (hasComma && !hasDot) {
-      // if comma likely decimal (e.g. "123,45") -> swap
-      if (/\d+,\d{1,2}$/.test(normalized)) {
-        normalized = normalized.replace(/,/g, ".");
-      } else {
-        normalized = normalized.replace(/,/g, "");
-      }
-    } else {
-      // only dot or neither: ok
-      normalized = normalized;
-    }
-
-    const n = Number(normalized);
-    return Number.isFinite(n) ? n : null;
-  }
-
+  // ---------- formatters ----------
   function fmtGBP(val) {
     if (val == null || isNaN(val)) return "£–";
-    const rounded = Math.round(Number(val));
-    return "£" + rounded.toLocaleString("en-GB");
+    const abs = Math.round(Math.abs(Number(val)));
+    return "£" + abs.toLocaleString("en-GB");
   }
 
   function fmtSalesVarMoney(val) {
@@ -115,72 +85,101 @@ export default function RankingTable({
     return `${sign}${val.toFixed(1)}%`;
   }
 
-  // ✅ Sales_Actual (Column B)
-  // supports object rows AND array-like rows (where col B = index 1)
+  // ---------- Sales_Actual extractor (Column B) ----------
   function getSalesActual(row) {
-    // 1) object keys (most likely)
-    const v1 =
+    const v =
       row?.Sales_Actual ??
       row?.["Sales_Actual"] ??
       row?.sales_actual ??
       row?.salesActual ??
-      row?.salesActualValue ??
       row?.salesValue ??
       row?.sales;
 
-    const n1 = parseMoney(v1);
-    if (n1 != null) return n1;
-
-    // 2) if someone stored the raw sheet row array on the object
-    const rawArray =
-      row?.raw ??
-      row?._raw ??
-      row?.row ??
-      row?.values ??
-      row?.sheetRow ??
-      null;
-
-    if (Array.isArray(rawArray) && rawArray.length > 1) {
-      const n2 = parseMoney(rawArray[1]); // Column B
-      if (n2 != null) return n2;
-    }
-
-    // 3) if the row itself is an array (rare, but possible)
-    if (Array.isArray(row) && row.length > 1) {
-      const n3 = parseMoney(row[1]); // Column B
-      if (n3 != null) return n3;
-    }
-
-    return null;
+    const n = Number(
+      typeof v === "string" ? v.replace(/[^\d.-]/g, "") : v
+    );
+    return Number.isFinite(n) ? n : null;
   }
 
-  // Optional: budget value if you have it (for showing in small text under Sales)
-  function getBudgetValue(row) {
+  function getBudget(row) {
     const v =
-      row?.budgetValue ??
-      row?.Budget ??
-      row?.budget ??
       row?.Sales_Budget ??
       row?.["Sales_Budget"] ??
-      row?.salesBudget;
-    return parseMoney(v);
+      row?.sales_budget ??
+      row?.salesBudget ??
+      row?.budgetValue ??
+      row?.budget;
+
+    const n = Number(
+      typeof v === "string" ? v.replace(/[^\d.-]/g, "") : v
+    );
+    return Number.isFinite(n) ? n : null;
   }
 
-  // ---------- labels ----------
-  const activeLabel =
-    rankingView === "period" ? selectedPeriod : selectedWeek;
+  // ---------- CSV export ----------
+  const csvFilename = `site-ranking-${rankingView}-${activeLabel || "selected"}.csv`;
 
-  const title =
-    rankingView === "period"
-      ? `Site Ranking – ${activeLabel || "Period"}`
-      : `Site Ranking – ${activeLabel || "Week"}`;
+  const csvData = rankingData.map((r) => {
+    const salesActual = getSalesActual(r);
+    const salesBudget = getBudget(r);
 
-  const subtitle =
-    rankingView === "period"
-      ? "Showing selected period. Sorted by highest Payroll % (worst at the top)."
-      : "Showing selected week. Sorted by highest Payroll % (worst at the top).";
+    return {
+      Location: r.location ?? "",
+      Period: r.week ?? "",
+      Sales_Actual: salesActual ?? "",
+      Sales_Budget: salesBudget ?? "",
+      Sales_Variance: r.salesVar ?? "",
+      Sales_VariancePct: r.salesVarPct ?? "",
+      Payroll_Pct: r.payrollPct ?? "",
+      Payroll_Cost: r.payrollValue ?? "",
+      Food_Pct: r.foodPct ?? "",
+      Food_Cost: r.foodValue ?? "",
+      Drink_Pct: r.drinkPct ?? "",
+      Drink_Cost: r.drinkValue ?? "",
+    };
+  });
 
-  const rowsClickable = typeof onRowClick === "function";
+  // ---------- PDF export (print-to-PDF) ----------
+  const tableRef = React.useRef(null);
+
+  function handleExportPDF() {
+    const html = tableRef.current?.outerHTML;
+    if (!html) return;
+
+    const w = window.open("", "_blank");
+    if (!w) return;
+
+    w.document.open();
+    w.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <meta charset="utf-8" />
+          <style>
+            body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 24px; color: #111827; }
+            h1 { font-size: 18px; margin: 0 0 6px 0; }
+            .sub { font-size: 12px; color: #6b7280; margin: 0 0 18px 0; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: top; }
+            th { color: #6b7280; font-weight: 600; }
+            @media print {
+              body { padding: 0; }
+              button { display: none !important; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${title}</h1>
+          <p class="sub">${subtitle}</p>
+          ${html}
+          <script>
+            window.onload = function() { window.print(); };
+          </script>
+        </body>
+      </html>
+    `);
+    w.document.close();
+  }
 
   // ---------- render ----------
   return (
@@ -241,12 +240,56 @@ export default function RankingTable({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "0.75rem",
+              gap: "0.6rem",
               flexWrap: "wrap",
               justifyContent: "flex-end",
             }}
           >
-            {/* View toggle */}
+            {/* Export buttons */}
+            <CSVLink
+              data={csvData}
+              filename={csvFilename}
+              style={{
+                textDecoration: "none",
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.35rem",
+                  padding: "0.35rem 0.75rem",
+                  borderRadius: "999px",
+                  border: "1px solid #e5e7eb",
+                  backgroundColor: "#ffffff",
+                  color: "#111827",
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Export CSV
+              </span>
+            </CSVLink>
+
+            <button
+              type="button"
+              onClick={handleExportPDF}
+              style={{
+                padding: "0.35rem 0.75rem",
+                borderRadius: "999px",
+                border: "1px solid #e5e7eb",
+                backgroundColor: "#ffffff",
+                color: "#111827",
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Export PDF
+            </button>
+
+            {/* View: % only / % + £ */}
             <div
               style={{
                 display: "inline-flex",
@@ -370,7 +413,7 @@ export default function RankingTable({
               </button>
             </div>
 
-            {/* picker */}
+            {/* week / period picker */}
             {rankingView === "week" && weekOptions?.length > 0 && (
               <select
                 value={selectedWeek}
@@ -420,12 +463,13 @@ export default function RankingTable({
         {/* Table */}
         <div style={{ width: "100%", overflowX: "auto" }}>
           <table
+            ref={tableRef}
             style={{
               width: "100%",
               borderCollapse: "collapse",
               fontSize: "0.8rem",
               lineHeight: 1.4,
-              minWidth: "860px",
+              minWidth: "900px",
             }}
           >
             <thead>
@@ -441,7 +485,7 @@ export default function RankingTable({
                   Location
                 </th>
 
-                {/* ✅ NEW Sales column (Column B Sales_Actual) */}
+                {/* Sales Actual column */}
                 <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
                   Sales (£)
                 </th>
@@ -452,18 +496,21 @@ export default function RankingTable({
                     (Target {payrollTarget}%)
                   </span>
                 </th>
+
                 <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
                   Food{" "}
                   <span style={{ fontWeight: 400, color: "#9ca3af" }}>
                     (≤ {foodTarget}%)
                   </span>
                 </th>
+
                 <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
                   Drink{" "}
                   <span style={{ fontWeight: 400, color: "#9ca3af" }}>
                     (≤ {drinkTarget}%)
                   </span>
                 </th>
+
                 <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
                   Sales vs Budget
                 </th>
@@ -472,17 +519,16 @@ export default function RankingTable({
 
             <tbody>
               {rankingData.map((row, idx) => {
-                const payrollStyle = colorForPayroll(row.payrollPct, payrollTarget);
+                const payrollStyle = colorForPayroll(
+                  row.payrollPct,
+                  payrollTarget
+                );
                 const foodStyle = colorForThreshold(row.foodPct, foodTarget);
                 const drinkStyle = colorForThreshold(row.drinkPct, drinkTarget);
                 const salesStyle = colorForSalesVar(row.salesVar);
 
-                const salesActual = getSalesActual(row); // ✅ from Sales_Actual / column B
-                const budgetValue = getBudgetValue(row);
-
-                const payrollValue = row.payrollValue;
-                const foodValue = row.foodValue;
-                const drinkValue = row.drinkValue;
+                const salesActual = getSalesActual(row);
+                const salesBudget = getBudget(row);
 
                 return (
                   <tr
@@ -491,10 +537,10 @@ export default function RankingTable({
                       borderBottom: "1px solid #e5e7eb",
                       backgroundColor:
                         idx === 0 ? "rgba(220,38,38,0.03)" : "transparent",
-                      cursor: typeof onRowClick === "function" ? "pointer" : "default",
+                      cursor: rowsClickable ? "pointer" : "default",
                     }}
                     onClick={
-                      typeof onRowClick === "function"
+                      rowsClickable
                         ? () => onRowClick(row.location)
                         : undefined
                     }
@@ -521,7 +567,7 @@ export default function RankingTable({
                       </div>
                     </td>
 
-                    {/* ✅ Sales Actual */}
+                    {/* Sales */}
                     <td
                       style={{
                         padding: "0.75rem",
@@ -531,9 +577,7 @@ export default function RankingTable({
                       }}
                     >
                       <div>{fmtGBP(salesActual)}</div>
-
-                      {/* Optional: show budget under sales (only if available) */}
-                      {valueView === "both" && budgetValue != null && (
+                      {valueView === "both" && salesBudget != null && (
                         <div
                           style={{
                             fontSize: "0.7rem",
@@ -542,7 +586,7 @@ export default function RankingTable({
                             marginTop: "0.15rem",
                           }}
                         >
-                          Budget {fmtGBP(budgetValue)}
+                          Budget {fmtGBP(salesBudget)}
                         </div>
                       )}
                     </td>
@@ -565,7 +609,7 @@ export default function RankingTable({
                             color: "#6b7280",
                           }}
                         >
-                          {fmtGBP(payrollValue)} payroll cost
+                          {fmtGBP(row.payrollValue)} payroll cost
                         </div>
                       )}
                     </td>
@@ -588,7 +632,7 @@ export default function RankingTable({
                             color: "#6b7280",
                           }}
                         >
-                          {fmtGBP(foodValue)} food cost
+                          {fmtGBP(row.foodValue)} food cost
                         </div>
                       )}
                     </td>
@@ -611,7 +655,7 @@ export default function RankingTable({
                             color: "#6b7280",
                           }}
                         >
-                          {fmtGBP(drinkValue)} drink cost
+                          {fmtGBP(row.drinkValue)} drink cost
                         </div>
                       )}
                     </td>
