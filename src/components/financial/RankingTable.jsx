@@ -16,7 +16,6 @@ export default function RankingTable({
   payrollTarget,
   foodTarget,
   drinkTarget,
-  // make it OPTIONAL via default value
   onRowClick = undefined,
 }) {
   const rankingData =
@@ -27,54 +26,75 @@ export default function RankingTable({
   // local toggle: show only % or % + £
   const [valueView, setValueView] = React.useState("both"); // "percent" | "both"
 
-  // Payroll traffic light:
-  // diff = payrollPct - target
-  // diff <= 1       => GREEN
-  // 1 < diff <= 2   => AMBER
-  // diff > 2        => RED
+  // ---------- helpers ----------
   function colorForPayroll(pct, target) {
-    if (pct == null || isNaN(pct)) {
-      return { color: "#6b7280" };
-    }
+    if (pct == null || isNaN(pct)) return { color: "#6b7280" };
     const diff = pct - target;
-    if (diff <= 1) return { color: "#059669" }; // green
-    if (diff <= 2) return { color: "#f59e0b" }; // amber
-    return { color: "#dc2626" }; // red
+    if (diff <= 1) return { color: "#059669" };
+    if (diff <= 2) return { color: "#f59e0b" };
+    return { color: "#dc2626" };
   }
 
-  // Food / Drink: good if ≤ target
   function colorForThreshold(val, target) {
-    if (val == null || isNaN(val)) {
-      return { color: "#6b7280" };
-    }
-    const ok = val <= target;
-    return {
-      color: ok ? "#059669" : "#dc2626",
-    };
+    if (val == null || isNaN(val)) return { color: "#6b7280" };
+    return { color: val <= target ? "#059669" : "#dc2626" };
   }
 
-  // Sales vs Budget: good if ≥ 0
   function colorForSalesVar(val) {
-    if (val == null || isNaN(val)) {
-      return { color: "#6b7280" };
+    if (val == null || isNaN(val)) return { color: "#6b7280" };
+    return { color: val >= 0 ? "#059669" : "#dc2626" };
+  }
+
+  // Parses "£12,345.67" / "12,345" / 12345 / "12345" -> number
+  function parseMoney(val) {
+    if (val == null) return null;
+    if (typeof val === "number" && Number.isFinite(val)) return val;
+
+    const s = String(val).trim();
+    if (!s) return null;
+
+    // keep digits, minus, dot, comma
+    const cleaned = s.replace(/[^\d.,-]/g, "");
+
+    // handle "12,345.67" or "12.345,67"
+    // Strategy:
+    // - if both comma & dot exist: assume dot is decimal if it appears last, else comma
+    // - if only comma exists: treat comma as thousands unless it looks like decimal (2 digits after)
+    let normalized = cleaned;
+
+    const hasComma = normalized.includes(",");
+    const hasDot = normalized.includes(".");
+
+    if (hasComma && hasDot) {
+      const lastComma = normalized.lastIndexOf(",");
+      const lastDot = normalized.lastIndexOf(".");
+      if (lastDot > lastComma) {
+        // dot is decimal, remove commas
+        normalized = normalized.replace(/,/g, "");
+      } else {
+        // comma is decimal, remove dots and swap comma->dot
+        normalized = normalized.replace(/\./g, "").replace(/,/g, ".");
+      }
+    } else if (hasComma && !hasDot) {
+      // if comma likely decimal (e.g. "123,45") -> swap
+      if (/\d+,\d{1,2}$/.test(normalized)) {
+        normalized = normalized.replace(/,/g, ".");
+      } else {
+        normalized = normalized.replace(/,/g, "");
+      }
+    } else {
+      // only dot or neither: ok
+      normalized = normalized;
     }
-    const ok = val >= 0;
-    return {
-      color: ok ? "#059669" : "#dc2626",
-    };
+
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : null;
   }
 
-  function fmtMoney(val) {
-    if (val == null || isNaN(val)) return "£–";
-    const abs = Math.round(Math.abs(val));
-    return "£" + abs.toLocaleString("en-GB");
-  }
-
-  // same as fmtMoney, but keeping name explicit for Sales/Budget
   function fmtGBP(val) {
     if (val == null || isNaN(val)) return "£–";
-    const abs = Math.round(Math.abs(val));
-    return "£" + abs.toLocaleString("en-GB");
+    const rounded = Math.round(Number(val));
+    return "£" + rounded.toLocaleString("en-GB");
   }
 
   function fmtSalesVarMoney(val) {
@@ -95,19 +115,58 @@ export default function RankingTable({
     return `${sign}${val.toFixed(1)}%`;
   }
 
-  // pull sales/budget safely from row using common keys
-  function getSalesValue(row) {
-    const v = row?.salesValue ?? row?.sales ?? row?.actualSales;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
+  // ✅ Sales_Actual (Column B)
+  // supports object rows AND array-like rows (where col B = index 1)
+  function getSalesActual(row) {
+    // 1) object keys (most likely)
+    const v1 =
+      row?.Sales_Actual ??
+      row?.["Sales_Actual"] ??
+      row?.sales_actual ??
+      row?.salesActual ??
+      row?.salesActualValue ??
+      row?.salesValue ??
+      row?.sales;
+
+    const n1 = parseMoney(v1);
+    if (n1 != null) return n1;
+
+    // 2) if someone stored the raw sheet row array on the object
+    const rawArray =
+      row?.raw ??
+      row?._raw ??
+      row?.row ??
+      row?.values ??
+      row?.sheetRow ??
+      null;
+
+    if (Array.isArray(rawArray) && rawArray.length > 1) {
+      const n2 = parseMoney(rawArray[1]); // Column B
+      if (n2 != null) return n2;
+    }
+
+    // 3) if the row itself is an array (rare, but possible)
+    if (Array.isArray(row) && row.length > 1) {
+      const n3 = parseMoney(row[1]); // Column B
+      if (n3 != null) return n3;
+    }
+
+    return null;
   }
 
+  // Optional: budget value if you have it (for showing in small text under Sales)
   function getBudgetValue(row) {
-    const v = row?.budgetValue ?? row?.budget ?? row?.salesBudget;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
+    const v =
+      row?.budgetValue ??
+      row?.Budget ??
+      row?.budget ??
+      row?.Sales_Budget ??
+      row?.["Sales_Budget"] ??
+      row?.salesBudget;
+    return parseMoney(v);
   }
 
+  // ---------- labels ----------
   const activeLabel =
     rankingView === "period" ? selectedPeriod : selectedWeek;
 
@@ -123,6 +182,7 @@ export default function RankingTable({
 
   const rowsClickable = typeof onRowClick === "function";
 
+  // ---------- render ----------
   return (
     <div
       style={{
@@ -142,7 +202,7 @@ export default function RankingTable({
           padding: "1rem 1rem 1.25rem",
         }}
       >
-        {/* Header row with title + toggle + pickers + view mode */}
+        {/* Header row */}
         <div
           style={{
             marginBottom: "0.75rem",
@@ -186,7 +246,7 @@ export default function RankingTable({
               justifyContent: "flex-end",
             }}
           >
-            {/* View: % only / % + £ */}
+            {/* View toggle */}
             <div
               style={{
                 display: "inline-flex",
@@ -310,7 +370,7 @@ export default function RankingTable({
               </button>
             </div>
 
-            {/* week / period picker */}
+            {/* picker */}
             {rankingView === "week" && weekOptions?.length > 0 && (
               <select
                 value={selectedWeek}
@@ -358,19 +418,14 @@ export default function RankingTable({
         </div>
 
         {/* Table */}
-        <div
-          style={{
-            width: "100%",
-            overflowX: "auto",
-          }}
-        >
+        <div style={{ width: "100%", overflowX: "auto" }}>
           <table
             style={{
               width: "100%",
               borderCollapse: "collapse",
               fontSize: "0.8rem",
               lineHeight: 1.4,
-              minWidth: "820px", // bumped a bit for the new Sales column
+              minWidth: "860px",
             }}
           >
             <thead>
@@ -382,88 +437,34 @@ export default function RankingTable({
                   borderBottom: "1px solid #e5e7eb",
                 }}
               >
-                <th
-                  style={{
-                    padding: "0.5rem 0.75rem",
-                    fontWeight: 500,
-                    whiteSpace: "nowrap",
-                  }}
-                >
+                <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
                   Location
                 </th>
 
-                {/* NEW: Sales column */}
-                <th
-                  style={{
-                    padding: "0.5rem 0.75rem",
-                    fontWeight: 500,
-                    whiteSpace: "nowrap",
-                  }}
-                >
+                {/* ✅ NEW Sales column (Column B Sales_Actual) */}
+                <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
                   Sales (£)
                 </th>
 
-                <th
-                  style={{
-                    padding: "0.5rem 0.75rem",
-                    fontWeight: 500,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Payroll
-                  <span
-                    style={{
-                      fontWeight: 400,
-                      color: "#9ca3af",
-                    }}
-                  >
-                    {" "}
+                <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
+                  Payroll{" "}
+                  <span style={{ fontWeight: 400, color: "#9ca3af" }}>
                     (Target {payrollTarget}%)
                   </span>
                 </th>
-                <th
-                  style={{
-                    padding: "0.5rem 0.75rem",
-                    fontWeight: 500,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Food
-                  <span
-                    style={{
-                      fontWeight: 400,
-                      color: "#9ca3af",
-                    }}
-                  >
-                    {" "}
+                <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
+                  Food{" "}
+                  <span style={{ fontWeight: 400, color: "#9ca3af" }}>
                     (≤ {foodTarget}%)
                   </span>
                 </th>
-                <th
-                  style={{
-                    padding: "0.5rem 0.75rem",
-                    fontWeight: 500,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Drink
-                  <span
-                    style={{
-                      fontWeight: 400,
-                      color: "#9ca3af",
-                    }}
-                  >
-                    {" "}
+                <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
+                  Drink{" "}
+                  <span style={{ fontWeight: 400, color: "#9ca3af" }}>
                     (≤ {drinkTarget}%)
                   </span>
                 </th>
-                <th
-                  style={{
-                    padding: "0.5rem 0.75rem",
-                    fontWeight: 500,
-                    whiteSpace: "nowrap",
-                  }}
-                >
+                <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
                   Sales vs Budget
                 </th>
               </tr>
@@ -471,20 +472,17 @@ export default function RankingTable({
 
             <tbody>
               {rankingData.map((row, idx) => {
-                const payrollStyle = colorForPayroll(
-                  row.payrollPct,
-                  payrollTarget
-                );
+                const payrollStyle = colorForPayroll(row.payrollPct, payrollTarget);
                 const foodStyle = colorForThreshold(row.foodPct, foodTarget);
                 const drinkStyle = colorForThreshold(row.drinkPct, drinkTarget);
                 const salesStyle = colorForSalesVar(row.salesVar);
 
+                const salesActual = getSalesActual(row); // ✅ from Sales_Actual / column B
+                const budgetValue = getBudgetValue(row);
+
                 const payrollValue = row.payrollValue;
                 const foodValue = row.foodValue;
                 const drinkValue = row.drinkValue;
-
-                const salesValue = getSalesValue(row);
-                const budgetValue = getBudgetValue(row);
 
                 return (
                   <tr
@@ -492,13 +490,13 @@ export default function RankingTable({
                     style={{
                       borderBottom: "1px solid #e5e7eb",
                       backgroundColor:
-                        idx === 0
-                          ? "rgba(220,38,38,0.03)"
-                          : "transparent",
-                      cursor: rowsClickable ? "pointer" : "default",
+                        idx === 0 ? "rgba(220,38,38,0.03)" : "transparent",
+                      cursor: typeof onRowClick === "function" ? "pointer" : "default",
                     }}
                     onClick={
-                      rowsClickable ? () => onRowClick(row.location) : undefined
+                      typeof onRowClick === "function"
+                        ? () => onRowClick(row.location)
+                        : undefined
                     }
                   >
                     {/* Location */}
@@ -523,23 +521,25 @@ export default function RankingTable({
                       </div>
                     </td>
 
-                    {/* NEW: Sales column */}
+                    {/* ✅ Sales Actual */}
                     <td
                       style={{
                         padding: "0.75rem",
-                        fontWeight: 600,
+                        fontWeight: 700,
                         color: "#111827",
                         whiteSpace: "nowrap",
                       }}
                     >
-                      <div>{fmtGBP(salesValue)}</div>
+                      <div>{fmtGBP(salesActual)}</div>
 
+                      {/* Optional: show budget under sales (only if available) */}
                       {valueView === "both" && budgetValue != null && (
                         <div
                           style={{
                             fontSize: "0.7rem",
                             fontWeight: 400,
                             color: "#6b7280",
+                            marginTop: "0.15rem",
                           }}
                         >
                           Budget {fmtGBP(budgetValue)}
@@ -565,7 +565,7 @@ export default function RankingTable({
                             color: "#6b7280",
                           }}
                         >
-                          {fmtMoney(payrollValue)} payroll cost
+                          {fmtGBP(payrollValue)} payroll cost
                         </div>
                       )}
                     </td>
@@ -588,7 +588,7 @@ export default function RankingTable({
                             color: "#6b7280",
                           }}
                         >
-                          {fmtMoney(foodValue)} food cost
+                          {fmtGBP(foodValue)} food cost
                         </div>
                       )}
                     </td>
@@ -611,7 +611,7 @@ export default function RankingTable({
                             color: "#6b7280",
                           }}
                         >
-                          {fmtMoney(drinkValue)} drink cost
+                          {fmtGBP(drinkValue)} drink cost
                         </div>
                       )}
                     </td>
