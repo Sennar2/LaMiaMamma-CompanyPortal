@@ -423,40 +423,60 @@ export default function FinancialPage() {
   }, [rawRows, year]);
 
   // 7) Group by Period/Quarter if needed
-  function groupMergedRowsBy(bucketKey: 'Period' | 'Quarter'): any[] {
-    if (!mergedRows.length) return [];
-    const grouped = mergedRows.reduce<Record<string, any[]>>((acc, row) => {
-      const key = row[bucketKey];
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(row);
-      return acc;
-    }, {});
+function groupMergedRowsBy(bucketKey: "Period" | "Quarter"): any[] {
+  if (!mergedRows.length) return [];
 
-    const numericKeys = Object.keys(mergedRows[0]).filter(
-      (k) => typeof mergedRows[0][k] === 'number',
-    );
+  const toNum = (v: any) => {
+    if (v == null) return 0;
+    if (typeof v === "number") return v;
+    // handle "277,621" or "£277,621"
+    const cleaned = String(v).replace(/[£,]/g, "").trim();
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : 0;
+  };
 
-    return Object.entries(grouped).map(([label, rows]) => {
-      const sums: Record<string, number> = {};
-      numericKeys.forEach((col) => {
-        sums[col] = (rows as any[]).reduce(
-          (total, r) => total + (r[col] || 0),
-          0,
-        );
-      });
-      return {
-        Week: label, // keep consistent shape for charts/XAxis
-        ...sums,
-      };
+  // group rows by Period or Quarter label
+  const grouped = mergedRows.reduce<Record<string, any[]>>((acc, row) => {
+    const key = row[bucketKey];
+    if (!key || key === "P?" || key === "Q?") return acc; // ignore unknown
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(row);
+    return acc;
+  }, {});
+
+  // choose numeric keys by “looks like a metric field”, not typeof number
+  // (because some sheet values might be strings)
+  const metricKeys = Object.keys(mergedRows[0]).filter((k) =>
+    /(Sales_|Payroll_|Food_|Drink_)/.test(k)
+  );
+
+  const result = Object.entries(grouped).map(([label, rows]) => {
+    const sums: Record<string, number> = {};
+
+    metricKeys.forEach((col) => {
+      sums[col] = (rows as any[]).reduce((total, r) => total + toNum(r[col]), 0);
     });
-  }
 
-  const filteredData = useMemo(() => {
-    if (!mergedRows.length) return [];
-    if (period === 'Week') return mergedRows;
-    if (period === 'Period') return groupMergedRowsBy('Period');
-    return groupMergedRowsBy('Quarter');
-  }, [mergedRows, period]);
+    return {
+      // ✅ IMPORTANT: give ALL label fields so charts can use them
+      Week: label,            // keep old behaviour
+      Period: bucketKey === "Period" ? label : undefined,
+      Quarter: bucketKey === "Quarter" ? label : undefined,
+      ...sums,
+    };
+  });
+
+  // sort P1..P13 or Q1..Q4
+  result.sort((a: any, b: any) => {
+    const na = parseInt(String(a.Week).replace(/[^\d]/g, ""), 10) || 0;
+    const nb = parseInt(String(b.Week).replace(/[^\d]/g, ""), 10) || 0;
+    return na - nb;
+  });
+
+  return result;
+}
+
+  
 
   // 8) Insights + Compliance snapshot (based on last completed week)
   const insights = useMemo(
