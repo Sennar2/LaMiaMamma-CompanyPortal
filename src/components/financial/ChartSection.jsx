@@ -16,6 +16,7 @@ export default function ChartSection({
   filteredData,
   chartConfig,
   CSVLink,
+  periodView, // 👈 NEW: "Week" | "Period" | "Quarter"
 }) {
   const baseLines = chartConfig[activeTab] || [];
 
@@ -37,24 +38,14 @@ export default function ChartSection({
 
   const formatPercent = (value) => {
     if (value == null || isNaN(Number(value))) return "";
-    const pct = Number(value);
-    return pct.toFixed(1) + "%";
+    return Number(value).toFixed(1) + "%";
   };
 
   const safeNum = (v) =>
     v == null || isNaN(Number(v)) ? 0 : Number(v);
 
-  /**
-   * Build a copy of filteredData where:
-   *
-   * Sales (percent mode):
-   *   Sales_vsBudgetPct   = (Actual - Budget) / Budget * 100
-   *   Sales_vsLastYearPct = (Actual - LastYear) / LastYear * 100
-   *
-   * Payroll / Food / Drink (percent mode):
-   *   <Metric>_vsTheoPct  = (Actual - Theo) / Theo * 100
-   *   (positive = overspend; negative = saving)
-   */
+  // ----------------- % CALCULATIONS -----------------
+
   const toPercentData = (rows, tab) => {
     return rows.map((row) => {
       const out = { ...row };
@@ -90,89 +81,71 @@ export default function ChartSection({
     });
   };
 
-  // Data actually fed into the chart, depending on unit
   const displayData =
     unit === "currency"
       ? filteredData
       : toPercentData(filteredData, activeTab);
 
-  // Choose which lines to render in % mode
+  // ----------------- LINES -----------------
+
   let lines;
   if (unit === "percent" && activeTab === "Sales") {
-    const salesActualLine =
-      baseLines.find((l) => l.key === "Sales_Actual") ||
-      baseLines[0] ||
-      { color: "#4ade80" };
-
-    const lastYearLine =
-      baseLines.find((l) => l.key === "Sales_LastYear") ||
-      baseLines[2] ||
-      { color: "#f97316" };
-
     lines = [
       {
         key: "Sales_vsBudgetPct",
-        color: salesActualLine.color,
+        color: "#4ade80",
         name: "Actual vs Budget",
       },
       {
         key: "Sales_vsLastYearPct",
-        color: lastYearLine.color,
+        color: "#f97316",
         name: "Actual vs Last Year",
       },
     ];
   } else if (unit === "percent" && activeTab === "Payroll") {
-    const actualLine =
-      baseLines.find((l) => l.key === "Payroll_Actual") ||
-      baseLines[0] ||
-      { color: "#4ade80" };
-
     lines = [
       {
         key: "Payroll_vsTheoPct",
-        color: actualLine.color,
+        color: "#4ade80",
         name: "Actual vs Theo",
       },
     ];
   } else if (unit === "percent" && activeTab === "Food") {
-    const actualLine =
-      baseLines.find((l) => l.key === "Food_Actual") ||
-      baseLines[0] ||
-      { color: "#4ade80" };
-
     lines = [
       {
         key: "Food_vsTheoPct",
-        color: actualLine.color,
+        color: "#4ade80",
         name: "Actual vs Theo",
       },
     ];
   } else if (unit === "percent" && activeTab === "Drink") {
-    const actualLine =
-      baseLines.find((l) => l.key === "Drink_Actual") ||
-      baseLines[0] ||
-      { color: "#4ade80" };
-
     lines = [
       {
         key: "Drink_vsTheoPct",
-        color: actualLine.color,
+        color: "#4ade80",
         name: "Actual vs Theo",
       },
     ];
   } else {
-    // £ mode: use original lines (Actual, Budget, Theo, Last Year)
     lines = baseLines;
   }
 
   const yTickFormatter = (value) =>
     unit === "currency" ? formatCurrency(value) : formatPercent(value);
 
-  const tooltipFormatter = (value, name) => {
-    const formatted =
-      unit === "currency" ? formatCurrency(value) : formatPercent(value);
-    return [formatted, name];
-  };
+  const tooltipFormatter = (value, name) => [
+    unit === "currency" ? formatCurrency(value) : formatPercent(value),
+    name,
+  ];
+
+  // ----------------- X AXIS KEY (THE FIX) -----------------
+
+  const xAxisKey =
+    periodView === "Period"
+      ? "Period"
+      : periodView === "Quarter"
+      ? "Quarter"
+      : "Week";
 
   // --------------------------------------------------
 
@@ -180,18 +153,17 @@ export default function ChartSection({
     <div
       style={{
         maxWidth: "1400px",
-        marginLeft: "auto",
-        marginRight: "auto",
+        margin: "0 auto 2rem auto",
         backgroundColor: "#fff",
         borderRadius: "0.75rem",
         boxShadow:
           "0 24px 40px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04)",
         border: "1px solid rgba(0,0,0,0.05)",
         padding: "1rem 1rem 1.5rem",
-        marginBottom: "2rem",
         fontFamily: "Inter, system-ui, sans-serif",
       }}
     >
+      {/* HEADER */}
       <div
         style={{
           display: "flex",
@@ -200,25 +172,10 @@ export default function ChartSection({
           alignItems: "center",
           marginBottom: "1rem",
           rowGap: "0.75rem",
-          columnGap: "0.75rem",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.75rem",
-          }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "1rem",
-              fontWeight: 600,
-              color: "#111827",
-              lineHeight: 1.3,
-            }}
-          >
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+          <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 600 }}>
             {activeTab}: Actual vs Budget
           </h2>
 
@@ -226,64 +183,36 @@ export default function ChartSection({
           <div
             style={{
               display: "inline-flex",
-              alignItems: "center",
-              gap: "0.3rem",
-              padding: "0.15rem",
               borderRadius: "999px",
               border: "1px solid rgba(0,0,0,0.08)",
               backgroundColor: "#f9fafb",
+              padding: "0.15rem",
             }}
           >
-            <button
-              type="button"
-              onClick={() => setUnit("currency")}
-              style={{
-                padding: "0.25rem 0.6rem",
-                borderRadius: "999px",
-                border: "none",
-                fontSize: "0.75rem",
-                fontWeight: 500,
-                cursor: "pointer",
-                backgroundColor:
-                  unit === "currency" ? "#111827" : "transparent",
-                color: unit === "currency" ? "#fff" : "#4b5563",
-                boxShadow:
-                  unit === "currency"
-                    ? "0 6px 12px rgba(0,0,0,0.25)"
-                    : "none",
-                transition: "all 0.15s ease",
-              }}
-            >
-              £
-            </button>
-            <button
-              type="button"
-              onClick={() => setUnit("percent")}
-              style={{
-                padding: "0.25rem 0.6rem",
-                borderRadius: "999px",
-                border: "none",
-                fontSize: "0.75rem",
-                fontWeight: 500,
-                cursor: "pointer",
-                backgroundColor:
-                  unit === "percent" ? "#111827" : "transparent",
-                color: unit === "percent" ? "#fff" : "#4b5563",
-                boxShadow:
-                  unit === "percent"
-                    ? "0 6px 12px rgba(0,0,0,0.25)"
-                    : "none",
-                transition: "all 0.15s ease",
-              }}
-            >
-              %
-            </button>
+            {["currency", "percent"].map((m) => (
+              <button
+                key={m}
+                onClick={() => setUnit(m)}
+                style={{
+                  padding: "0.25rem 0.6rem",
+                  borderRadius: "999px",
+                  border: "none",
+                  fontSize: "0.75rem",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  backgroundColor: unit === m ? "#111827" : "transparent",
+                  color: unit === m ? "#fff" : "#4b5563",
+                }}
+              >
+                {m === "currency" ? "£" : "%"}
+              </button>
+            ))}
           </div>
         </div>
 
         <CSVLink
-          data={filteredData}
-          filename={`${activeTab}.csv`}
+          data={displayData}
+          filename={`${activeTab}-${periodView}.csv`}
           style={{
             fontSize: "0.8rem",
             backgroundColor: "#111827",
@@ -292,20 +221,17 @@ export default function ChartSection({
             borderRadius: "0.5rem",
             textDecoration: "none",
             fontWeight: 500,
-            lineHeight: 1.2,
-            boxShadow: "0 12px 24px rgba(0,0,0,0.4)",
           }}
         >
           Export CSV
         </CSVLink>
       </div>
 
+      {/* CHART */}
       <div style={{ width: "100%", height: "300px" }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer>
           <LineChart data={displayData}>
-            {/* IMPORTANT: always use `Week` – in Period/Quarter view your data
-                already sets Week = "P1"/"P2"/"Q1"/etc. */}
-            <XAxis dataKey="Week" />
+            <XAxis dataKey={xAxisKey} />
             <YAxis tickFormatter={yTickFormatter} />
             <Tooltip formatter={tooltipFormatter} />
             <Legend />
@@ -318,7 +244,7 @@ export default function ChartSection({
                 name={line.name}
                 strokeWidth={2}
                 dot={{ r: 4 }}
-                activeDot={{ r: 6, strokeWidth: 2, stroke: "#000" }}
+                activeDot={{ r: 6 }}
               />
             ))}
           </LineChart>
