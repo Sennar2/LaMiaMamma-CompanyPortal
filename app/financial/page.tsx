@@ -520,26 +520,31 @@ Quarter: bucketKey === "Quarter" ? label : "",
     setSelectedRankingPeriod(val);
   };
 
-  // Load ranking source data when role/year change
-  useEffect(() => {
-    (async () => {
-      if (!['admin', 'operation', 'ops'].includes(role)) {
-        setRankingSource([]);
-        setRankingWeekOptions([]);
-        setRankingPeriodOptions([]);
-        setRankingWeekData([]);
-        setRankingPeriodData([]);
-        return;
-      }
+ // Load ranking source data when role/year change
+useEffect(() => {
+  (async () => {
+    if (!["admin", "operation", "ops"].includes(role)) {
+      setRankingSource([]);
+      setRankingWeekOptions([]);
+      setRankingPeriodOptions([]);
+      setRankingWeekData([]);
+      setRankingPeriodData([]);
+      return;
+    }
 
-      try {
-        const currentWeekNum = getISOWeek();
-        const snapshotWeekNum =
-          currentWeekNum - 1 <= 0 ? currentWeekNum : currentWeekNum - 1;
+    try {
+      const currentWeekNum = getISOWeek();
+      const snapshotWeekNum =
+        currentWeekNum - 1 <= 0 ? currentWeekNum : currentWeekNum - 1;
 
-        const all = await Promise.all(
-          STORE_LOCATIONS.map(async (loc) => {
+      const yearNum = Number(year) || new Date().getFullYear();
+
+      // ✅ IMPORTANT: don’t let 1 failed tab kill the whole ranking
+      const results = await Promise.all(
+        STORE_LOCATIONS.map(async (loc) => {
+          try {
             const rows = await fetchTab(loc, year);
+
             const decorated = rows
               .map((r: any) => ({
                 ...r,
@@ -547,76 +552,86 @@ Quarter: bucketKey === "Quarter" ? label : "",
               }))
               .filter((r: any) => r.__weekNum > 0)
               .sort((a: any, b: any) => a.__weekNum - b.__weekNum);
-            return { loc, rows: decorated };
-          }),
-        );
 
-        setRankingSource(all);
-
-        // collect available weeks & periods (year-aware)
-        const weekSet = new Set<string>();
-        const periodSet = new Set<string>();
-        const yearNum = Number(year) || new Date().getFullYear();
-
-        for (const { rows } of all) {
-          for (const r of rows) {
-            if (!rowHasData(r)) continue;
-            const wLabel = String(r.Week || '').trim();
-            if (!wLabel) continue;
-
-            weekSet.add(wLabel);
-
-            const periodLabel = getPeriodForWeek(wLabel, yearNum);
-            if (periodLabel && periodLabel !== 'P?') {
-              periodSet.add(periodLabel);
-            }
+            return { loc, rows: decorated, ok: true as const };
+          } catch (err: any) {
+            // helpful debug in Vercel logs
+            console.warn(`[RANKING] failed to load tab "${loc}" (${year})`, err?.message || err);
+            return { loc, rows: [] as any[], ok: false as const };
           }
-        }
+        })
+      );
 
-        const weekOptions = Array.from(weekSet).sort(
-          (a, b) => parseWeekNum(a) - parseWeekNum(b),
-        );
-        setRankingWeekOptions(weekOptions);
+      // keep only locations that actually returned data
+      const all = results.filter((x) => x.rows && x.rows.length > 0).map(({ loc, rows }) => ({ loc, rows }));
 
-        // default week = last <= snapshotWeekNum
-        let defaultWeek = '';
-        for (const w of weekOptions) {
-          const num = parseWeekNum(w);
-          if (num <= snapshotWeekNum) defaultWeek = w;
-        }
-        if (!defaultWeek && weekOptions.length) {
-          defaultWeek = weekOptions[weekOptions.length - 1];
-        }
-        setSelectedRankingWeek((prev) => prev || defaultWeek);
+      setRankingSource(all);
 
-        const periodOptions = Array.from(periodSet).sort((a, b) => {
-          const na = parseInt(a.replace(/[^\d]/g, ''), 10) || 0;
-          const nb = parseInt(b.replace(/[^\d]/g, ''), 10) || 0;
-          return na - nb;
-        });
-        setRankingPeriodOptions(periodOptions);
-
-        const yearNumForSnap = yearNum;
-        const snapshotWeekLabel = `W${snapshotWeekNum}`;
-        let defaultPeriod = getPeriodForWeek(snapshotWeekLabel, yearNumForSnap);
-        if (defaultPeriod === 'P?') defaultPeriod = '';
-        if (defaultPeriod && !periodSet.has(defaultPeriod)) {
-          defaultPeriod = '';
-        }
-        if (!defaultPeriod && periodOptions.length) {
-          defaultPeriod = periodOptions[periodOptions.length - 1];
-        }
-        setSelectedRankingPeriod((prev) => prev || defaultPeriod);
-      } catch (err) {
-        console.error('Ranking load failed:', err);
-        setRankingSource([]);
+      // If none loaded, clear options + data and exit
+      if (!all.length) {
         setRankingWeekOptions([]);
         setRankingPeriodOptions([]);
         setRankingWeekData([]);
         setRankingPeriodData([]);
+        return;
       }
-    })();
-  }, [role, year]);
+
+      // collect available weeks & periods (year-aware)
+      const weekSet = new Set<string>();
+      const periodSet = new Set<string>();
+
+      for (const { rows } of all) {
+        for (const r of rows) {
+          if (!rowHasData(r)) continue;
+          const wLabel = String(r.Week || "").trim();
+          if (!wLabel) continue;
+
+          weekSet.add(wLabel);
+
+          const periodLabel = getPeriodForWeek(wLabel, yearNum);
+          if (periodLabel && periodLabel !== "P?") periodSet.add(periodLabel);
+        }
+      }
+
+      const weekOptions = Array.from(weekSet).sort(
+        (a, b) => parseWeekNum(a) - parseWeekNum(b)
+      );
+      setRankingWeekOptions(weekOptions);
+
+      // default week = last <= snapshotWeekNum
+      let defaultWeek = "";
+      for (const w of weekOptions) {
+        const num = parseWeekNum(w);
+        if (num <= snapshotWeekNum) defaultWeek = w;
+      }
+      if (!defaultWeek && weekOptions.length) defaultWeek = weekOptions[weekOptions.length - 1];
+      setSelectedRankingWeek((prev) => prev || defaultWeek);
+
+      const periodOptions = Array.from(periodSet).sort((a, b) => {
+        const na = parseInt(a.replace(/[^\d]/g, ""), 10) || 0;
+        const nb = parseInt(b.replace(/[^\d]/g, ""), 10) || 0;
+        return na - nb;
+      });
+      setRankingPeriodOptions(periodOptions);
+
+      const snapshotWeekLabel = `W${snapshotWeekNum}`;
+      let defaultPeriod = getPeriodForWeek(snapshotWeekLabel, yearNum);
+      if (defaultPeriod === "P?") defaultPeriod = "";
+      if (defaultPeriod && !periodSet.has(defaultPeriod)) defaultPeriod = "";
+      if (!defaultPeriod && periodOptions.length) defaultPeriod = periodOptions[periodOptions.length - 1];
+      setSelectedRankingPeriod((prev) => prev || defaultPeriod);
+
+    } catch (err) {
+      console.error("Ranking load failed:", err);
+      setRankingSource([]);
+      setRankingWeekOptions([]);
+      setRankingPeriodOptions([]);
+      setRankingWeekData([]);
+      setRankingPeriodData([]);
+    }
+  })();
+}, [role, year]);
+
 
   // Build week & period ranking datasets from rankingSource + selected filters
   useEffect(() => {
