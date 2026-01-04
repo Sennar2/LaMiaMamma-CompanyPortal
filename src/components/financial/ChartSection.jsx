@@ -335,7 +335,10 @@ export default function ChartSection({
             {/* ✅ Always use clean computed label */}
             <XAxis dataKey="__xLabel" />
             <YAxis tickFormatter={yTickFormatter} />
-            <Tooltip formatter={tooltipFormatter} />
+            <Tooltip
+  formatter={tooltipFormatter}
+  labelFormatter={(label) => String(label || "")}
+/>
             <Legend />
             {lines.map((line) => (
               <Line
