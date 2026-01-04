@@ -460,8 +460,8 @@ function groupMergedRowsBy(bucketKey: "Period" | "Quarter"): any[] {
     return {
       // ✅ IMPORTANT: give ALL label fields so charts can use them
       Week: label,            // keep old behaviour
-      Period: bucketKey === "Period" ? label : undefined,
-      Quarter: bucketKey === "Quarter" ? label : undefined,
+      Period: bucketKey === "Period" ? label : "",
+Quarter: bucketKey === "Quarter" ? label : "",
       ...sums,
     };
   });
@@ -475,6 +475,13 @@ function groupMergedRowsBy(bucketKey: "Period" | "Quarter"): any[] {
 
   return result;
 }
+  // 7b) Filtered data for KPI + charts (based on selected Period view)
+  const filteredData = useMemo(() => {
+    if (!mergedRows.length) return [];
+    if (period === "Week") return mergedRows;
+    if (period === "Period") return groupMergedRowsBy("Period");
+    return groupMergedRowsBy("Quarter");
+  }, [mergedRows, period]);
 
 
   
