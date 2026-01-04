@@ -476,6 +476,7 @@ function groupMergedRowsBy(bucketKey: "Period" | "Quarter"): any[] {
   return result;
 }
 
+
   
 
   // 8) Insights + Compliance snapshot (based on last completed week)
