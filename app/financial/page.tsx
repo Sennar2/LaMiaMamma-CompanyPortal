@@ -125,19 +125,33 @@ function rowHasData(r: any) {
 // Google Sheets: parse values
 function parseSheetValues(values: any[][] | undefined): any[] {
   if (!values || values.length < 2) return [];
-  const [headers, ...rows] = values;
+  const [headersRaw, ...rows] = values;
+
+  // ✅ normalise headers once (trim + remove invisible whitespace)
+  const headers = headersRaw.map((h) =>
+    String(h ?? "")
+      .replace(/\u00A0/g, " ") // non-breaking spaces → normal spaces
+      .trim()
+  );
+
   return rows.map((row) =>
     headers.reduce((obj: Record<string, any>, key: string, idx: number) => {
       let value = row[idx];
-      if (key === 'LocationBreakdown' && typeof value === 'string') {
+
+      if (key === "LocationBreakdown" && typeof value === "string") {
         try {
           value = JSON.parse(value);
         } catch {
           value = {};
         }
-      } else if (!isNaN(value)) {
+      } else if (typeof value === "string") {
+        // ✅ handle "£277,621" or "277,621"
+        const cleaned = value.replace(/[£,]/g, "").trim();
+        if (cleaned !== "" && !isNaN(Number(cleaned))) value = Number(cleaned);
+      } else if (value != null && !isNaN(value)) {
         value = Number(value);
       }
+
       obj[key] = value;
       return obj;
     }, {}),
