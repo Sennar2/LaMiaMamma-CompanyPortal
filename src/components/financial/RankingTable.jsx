@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { CSVLink } from "react-csv";
 
 export default function RankingTable({
   rankingWeekData,
@@ -27,21 +26,7 @@ export default function RankingTable({
   // local toggle: show only % or % + £
   const [valueView, setValueView] = React.useState("both"); // "percent" | "both"
 
-  const rowsClickable = typeof onRowClick === "function";
-
-  const activeLabel = rankingView === "period" ? selectedPeriod : selectedWeek;
-
-  const title =
-    rankingView === "period"
-      ? `Site Ranking – ${activeLabel || "Period"}`
-      : `Site Ranking – ${activeLabel || "Week"}`;
-
-  const subtitle =
-    rankingView === "period"
-      ? "Showing selected period. Sorted by highest Payroll % (worst at the top)."
-      : "Showing selected week. Sorted by highest Payroll % (worst at the top).";
-
-  // ---------- styling helpers ----------
+  // Payroll traffic light
   function colorForPayroll(pct, target) {
     if (pct == null || isNaN(pct)) return { color: "#6b7280" };
     const diff = pct - target;
@@ -50,20 +35,21 @@ export default function RankingTable({
     return { color: "#dc2626" }; // red
   }
 
+  // Food / Drink: good if ≤ target
   function colorForThreshold(val, target) {
     if (val == null || isNaN(val)) return { color: "#6b7280" };
     return { color: val <= target ? "#059669" : "#dc2626" };
   }
 
+  // Sales variance: good if ≥ 0
   function colorForSalesVar(val) {
     if (val == null || isNaN(val)) return { color: "#6b7280" };
     return { color: val >= 0 ? "#059669" : "#dc2626" };
   }
 
-  // ---------- formatters ----------
-  function fmtGBP(val) {
+  function fmtMoney(val) {
     if (val == null || isNaN(val)) return "£–";
-    const abs = Math.round(Math.abs(Number(val)));
+    const abs = Math.round(Math.abs(val));
     return "£" + abs.toLocaleString("en-GB");
   }
 
@@ -85,103 +71,20 @@ export default function RankingTable({
     return `${sign}${val.toFixed(1)}%`;
   }
 
-  // ---------- Sales_Actual extractor (Column B) ----------
-  function getSalesActual(row) {
-    const v =
-      row?.Sales_Actual ??
-      row?.["Sales_Actual"] ??
-      row?.sales_actual ??
-      row?.salesActual ??
-      row?.salesValue ??
-      row?.sales;
+  const activeLabel = rankingView === "period" ? selectedPeriod : selectedWeek;
 
-    const n = Number(
-      typeof v === "string" ? v.replace(/[^\d.-]/g, "") : v
-    );
-    return Number.isFinite(n) ? n : null;
-  }
+  const title =
+    rankingView === "period"
+      ? `Site Ranking – ${activeLabel || "Period"}`
+      : `Site Ranking – ${activeLabel || "Week"}`;
 
-  function getBudget(row) {
-    const v =
-      row?.Sales_Budget ??
-      row?.["Sales_Budget"] ??
-      row?.sales_budget ??
-      row?.salesBudget ??
-      row?.budgetValue ??
-      row?.budget;
+  const subtitle =
+    rankingView === "period"
+      ? "Showing selected period. Sorted by highest Payroll % (worst at the top)."
+      : "Showing selected week. Sorted by highest Payroll % (worst at the top).";
 
-    const n = Number(
-      typeof v === "string" ? v.replace(/[^\d.-]/g, "") : v
-    );
-    return Number.isFinite(n) ? n : null;
-  }
+  const rowsClickable = typeof onRowClick === "function";
 
-  // ---------- CSV export ----------
-  const csvFilename = `site-ranking-${rankingView}-${activeLabel || "selected"}.csv`;
-
-  const csvData = rankingData.map((r) => {
-    const salesActual = getSalesActual(r);
-    const salesBudget = getBudget(r);
-
-    return {
-      Location: r.location ?? "",
-      Period: r.week ?? "",
-      Sales_Actual: salesActual ?? "",
-      Sales_Budget: salesBudget ?? "",
-      Sales_Variance: r.salesVar ?? "",
-      Sales_VariancePct: r.salesVarPct ?? "",
-      Payroll_Pct: r.payrollPct ?? "",
-      Payroll_Cost: r.payrollValue ?? "",
-      Food_Pct: r.foodPct ?? "",
-      Food_Cost: r.foodValue ?? "",
-      Drink_Pct: r.drinkPct ?? "",
-      Drink_Cost: r.drinkValue ?? "",
-    };
-  });
-
-  // ---------- PDF export (print-to-PDF) ----------
-  const tableRef = React.useRef(null);
-
-  function handleExportPDF() {
-    const html = tableRef.current?.outerHTML;
-    if (!html) return;
-
-    const w = window.open("", "_blank");
-    if (!w) return;
-
-    w.document.open();
-    w.document.write(`
-      <html>
-        <head>
-          <title>${title}</title>
-          <meta charset="utf-8" />
-          <style>
-            body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 24px; color: #111827; }
-            h1 { font-size: 18px; margin: 0 0 6px 0; }
-            .sub { font-size: 12px; color: #6b7280; margin: 0 0 18px 0; }
-            table { width: 100%; border-collapse: collapse; font-size: 12px; }
-            th, td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: top; }
-            th { color: #6b7280; font-weight: 600; }
-            @media print {
-              body { padding: 0; }
-              button { display: none !important; }
-            }
-          </style>
-        </head>
-        <body>
-          <h1>${title}</h1>
-          <p class="sub">${subtitle}</p>
-          ${html}
-          <script>
-            window.onload = function() { window.print(); };
-          </script>
-        </body>
-      </html>
-    `);
-    w.document.close();
-  }
-
-  // ---------- render ----------
   return (
     <div
       style={{
@@ -240,56 +143,12 @@ export default function RankingTable({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "0.6rem",
+              gap: "0.75rem",
               flexWrap: "wrap",
               justifyContent: "flex-end",
             }}
           >
-            {/* Export buttons */}
-            <CSVLink
-              data={csvData}
-              filename={csvFilename}
-              style={{
-                textDecoration: "none",
-              }}
-            >
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.35rem",
-                  padding: "0.35rem 0.75rem",
-                  borderRadius: "999px",
-                  border: "1px solid #e5e7eb",
-                  backgroundColor: "#ffffff",
-                  color: "#111827",
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Export CSV
-              </span>
-            </CSVLink>
-
-            <button
-              type="button"
-              onClick={handleExportPDF}
-              style={{
-                padding: "0.35rem 0.75rem",
-                borderRadius: "999px",
-                border: "1px solid #e5e7eb",
-                backgroundColor: "#ffffff",
-                color: "#111827",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Export PDF
-            </button>
-
-            {/* View: % only / % + £ */}
+            {/* View toggle */}
             <div
               style={{
                 display: "inline-flex",
@@ -463,13 +322,12 @@ export default function RankingTable({
         {/* Table */}
         <div style={{ width: "100%", overflowX: "auto" }}>
           <table
-            ref={tableRef}
             style={{
               width: "100%",
               borderCollapse: "collapse",
               fontSize: "0.8rem",
               lineHeight: 1.4,
-              minWidth: "900px",
+              minWidth: "980px",
             }}
           >
             <thead>
@@ -483,11 +341,6 @@ export default function RankingTable({
               >
                 <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
                   Location
-                </th>
-
-                {/* Sales Actual column */}
-                <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
-                  Sales (£)
                 </th>
 
                 <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
@@ -511,174 +364,122 @@ export default function RankingTable({
                   </span>
                 </th>
 
+                {/* ✅ NEW */}
+                <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
+                  Sales
+                </th>
+
+                <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
+                  Forecast
+                </th>
+
                 <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
                   Sales vs Budget
+                </th>
+
+                <th style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap" }}>
+                  Sales vs Forecast
                 </th>
               </tr>
             </thead>
 
             <tbody>
               {rankingData.map((row, idx) => {
-                const payrollStyle = colorForPayroll(
-                  row.payrollPct,
-                  payrollTarget
-                );
+                const payrollStyle = colorForPayroll(row.payrollPct, payrollTarget);
                 const foodStyle = colorForThreshold(row.foodPct, foodTarget);
                 const drinkStyle = colorForThreshold(row.drinkPct, drinkTarget);
-                const salesStyle = colorForSalesVar(row.salesVar);
 
-                const salesActual = getSalesActual(row);
-                const salesBudget = getBudget(row);
+                const salesBudgetStyle = colorForSalesVar(row.salesVar);
+                const salesFcStyle = colorForSalesVar(row.salesFcVar);
+
+                const payrollValue = row.payrollValue;
+                const foodValue = row.foodValue;
+                const drinkValue = row.drinkValue;
 
                 return (
                   <tr
                     key={idx}
                     style={{
                       borderBottom: "1px solid #e5e7eb",
-                      backgroundColor:
-                        idx === 0 ? "rgba(220,38,38,0.03)" : "transparent",
+                      backgroundColor: idx === 0 ? "rgba(220,38,38,0.03)" : "transparent",
                       cursor: rowsClickable ? "pointer" : "default",
                     }}
-                    onClick={
-                      rowsClickable
-                        ? () => onRowClick(row.location)
-                        : undefined
-                    }
+                    onClick={rowsClickable ? () => onRowClick(row.location) : undefined}
                   >
                     {/* Location */}
-                    <td
-                      style={{
-                        padding: "0.75rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <td style={{ padding: "0.75rem", fontWeight: 500, color: "#111827", whiteSpace: "nowrap" }}>
                       {row.location}
-                      <div
-                        style={{
-                          fontSize: "0.7rem",
-                          fontWeight: 400,
-                          color: "#9ca3af",
-                          lineHeight: 1.3,
-                        }}
-                      >
+                      <div style={{ fontSize: "0.7rem", fontWeight: 400, color: "#9ca3af", lineHeight: 1.3 }}>
                         {row.week || "-"}
                       </div>
                     </td>
 
-                    {/* Sales */}
-                    <td
-                      style={{
-                        padding: "0.75rem",
-                        fontWeight: 700,
-                        color: "#111827",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      <div>{fmtGBP(salesActual)}</div>
-                      {valueView === "both" && salesBudget != null && (
-                        <div
-                          style={{
-                            fontSize: "0.7rem",
-                            fontWeight: 400,
-                            color: "#6b7280",
-                            marginTop: "0.15rem",
-                          }}
-                        >
-                          Budget {fmtGBP(salesBudget)}
-                        </div>
-                      )}
-                    </td>
-
                     {/* Payroll */}
-                    <td
-                      style={{
-                        padding: "0.75rem",
-                        fontWeight: 600,
-                        color: payrollStyle.color,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <td style={{ padding: "0.75rem", fontWeight: 600, color: payrollStyle.color, whiteSpace: "nowrap" }}>
                       <div>{fmtPct(row.payrollPct)}</div>
                       {valueView === "both" && (
-                        <div
-                          style={{
-                            fontSize: "0.7rem",
-                            fontWeight: 400,
-                            color: "#6b7280",
-                          }}
-                        >
-                          {fmtGBP(row.payrollValue)} payroll cost
+                        <div style={{ fontSize: "0.7rem", fontWeight: 400, color: "#6b7280" }}>
+                          {fmtMoney(payrollValue)} payroll cost
                         </div>
                       )}
                     </td>
 
                     {/* Food */}
-                    <td
-                      style={{
-                        padding: "0.75rem",
-                        fontWeight: 600,
-                        color: foodStyle.color,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <td style={{ padding: "0.75rem", fontWeight: 600, color: foodStyle.color, whiteSpace: "nowrap" }}>
                       <div>{fmtPct(row.foodPct)}</div>
                       {valueView === "both" && (
-                        <div
-                          style={{
-                            fontSize: "0.7rem",
-                            fontWeight: 400,
-                            color: "#6b7280",
-                          }}
-                        >
-                          {fmtGBP(row.foodValue)} food cost
+                        <div style={{ fontSize: "0.7rem", fontWeight: 400, color: "#6b7280" }}>
+                          {fmtMoney(foodValue)} food cost
                         </div>
                       )}
                     </td>
 
                     {/* Drink */}
-                    <td
-                      style={{
-                        padding: "0.75rem",
-                        fontWeight: 600,
-                        color: drinkStyle.color,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <td style={{ padding: "0.75rem", fontWeight: 600, color: drinkStyle.color, whiteSpace: "nowrap" }}>
                       <div>{fmtPct(row.drinkPct)}</div>
                       {valueView === "both" && (
-                        <div
-                          style={{
-                            fontSize: "0.7rem",
-                            fontWeight: 400,
-                            color: "#6b7280",
-                          }}
-                        >
-                          {fmtGBP(row.drinkValue)} drink cost
+                        <div style={{ fontSize: "0.7rem", fontWeight: 400, color: "#6b7280" }}>
+                          {fmtMoney(drinkValue)} drink cost
+                        </div>
+                      )}
+                    </td>
+
+                    {/* ✅ Sales (Actual) */}
+                    <td style={{ padding: "0.75rem", fontWeight: 600, color: "#111827", whiteSpace: "nowrap" }}>
+                      <div>{fmtMoney(row.Sales_Actual)}</div>
+                      {valueView === "both" && (
+                        <div style={{ fontSize: "0.7rem", fontWeight: 400, color: "#6b7280" }}>
+                          actual
+                        </div>
+                      )}
+                    </td>
+
+                    {/* ✅ Forecast */}
+                    <td style={{ padding: "0.75rem", fontWeight: 600, color: "#111827", whiteSpace: "nowrap" }}>
+                      <div>{fmtMoney(row.Sales_Forecast)}</div>
+                      {valueView === "both" && (
+                        <div style={{ fontSize: "0.7rem", fontWeight: 400, color: "#6b7280" }}>
+                          forecast
                         </div>
                       )}
                     </td>
 
                     {/* Sales vs Budget */}
-                    <td
-                      style={{
-                        padding: "0.75rem",
-                        fontWeight: 600,
-                        color: salesStyle.color,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <td style={{ padding: "0.75rem", fontWeight: 600, color: salesBudgetStyle.color, whiteSpace: "nowrap" }}>
                       <div>{fmtSalesVarMoney(row.salesVar)}</div>
                       {valueView === "both" && (
-                        <div
-                          style={{
-                            fontSize: "0.7rem",
-                            fontWeight: 400,
-                            color: "#6b7280",
-                          }}
-                        >
+                        <div style={{ fontSize: "0.7rem", fontWeight: 400, color: "#6b7280" }}>
                           {fmtSignedPct(row.salesVarPct)} vs budget
+                        </div>
+                      )}
+                    </td>
+
+                    {/* ✅ Sales vs Forecast */}
+                    <td style={{ padding: "0.75rem", fontWeight: 600, color: salesFcStyle.color, whiteSpace: "nowrap" }}>
+                      <div>{fmtSalesVarMoney(row.salesFcVar)}</div>
+                      {valueView === "both" && (
+                        <div style={{ fontSize: "0.7rem", fontWeight: 400, color: "#6b7280" }}>
+                          {fmtSignedPct(row.salesFcVarPct)} vs forecast
                         </div>
                       )}
                     </td>
@@ -689,16 +490,8 @@ export default function RankingTable({
           </table>
         </div>
 
-        <div
-          style={{
-            fontSize: "0.7rem",
-            color: "#6b7280",
-            lineHeight: 1.4,
-            marginTop: "0.75rem",
-          }}
-        >
-          Worst payroll % appears first. Payroll colour is based on how far the
-          average % for that week/period is from the {payrollTarget}% target:
+        <div style={{ fontSize: "0.7rem", color: "#6b7280", lineHeight: 1.4, marginTop: "0.75rem" }}>
+          Worst payroll % appears first. Payroll colour is based on how far the average % is from the {payrollTarget}% target:
           green ≤ 1pt over, amber 1–2pts over, red &gt; 2pts over.
         </div>
       </div>
