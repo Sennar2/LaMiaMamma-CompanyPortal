@@ -669,7 +669,7 @@ useEffect(() => {
 
       const salesActual = match.Sales_Actual || 0; // ✅ Actual
       const salesBudget = match.Sales_Budget || 0; // ✅ Budget
-      const salesForecast = match.Sales_Forecast || 0; // ✅ NEW Forecast
+      const salesForecast = match.SaleForecast || 0; // ✅ NEW Forecast
 
       const payrollActual = match.Payroll_Actual || 0;
       const foodActual = match.Food_Actual || 0;
@@ -752,7 +752,7 @@ useEffect(() => {
       for (const r of filtered) {
         salesActualTotal += r.Sales_Actual || 0;
         salesBudgetTotal += r.Sales_Budget || 0;
-        salesForecastTotal += r.Sales_Forecast || 0; // ✅ NEW
+        salesForecastTotal += r.SaleForecast || 0; // ✅ NEW
 
         payrollActualTotal += r.Payroll_Actual || 0;
         foodActualTotal += r.Food_Actual || 0;
