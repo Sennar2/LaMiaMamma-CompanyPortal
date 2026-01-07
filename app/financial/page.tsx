@@ -648,139 +648,173 @@ useEffect(() => {
 
 
   // Build week & period ranking datasets from rankingSource + selected filters
-  useEffect(() => {
-    if (!rankingSource.length) {
-      setRankingWeekData([]);
-      setRankingPeriodData([]);
-      return;
+useEffect(() => {
+  if (!rankingSource.length) {
+    setRankingWeekData([]);
+    setRankingPeriodData([]);
+    return;
+  }
+
+  // ---- WEEK RANKING ----
+  if (selectedRankingWeek) {
+    const weekRows: any[] = [];
+
+    for (const { loc, rows } of rankingSource) {
+      const match = rows.find(
+        (r: any) =>
+          String(r.Week || "").trim() === selectedRankingWeek &&
+          rowHasData(r),
+      );
+      if (!match) continue;
+
+      const salesActual = match.Sales_Actual || 0; // ✅ Actual
+      const salesBudget = match.Sales_Budget || 0; // ✅ Budget
+      const salesForecast = match.Sales_Forecast || 0; // ✅ NEW Forecast
+
+      const payrollActual = match.Payroll_Actual || 0;
+      const foodActual = match.Food_Actual || 0;
+      const drinkActual = match.Drink_Actual || 0;
+
+      const payrollPct =
+        salesActual !== 0 ? (payrollActual / salesActual) * 100 : 0;
+      const foodPct = salesActual !== 0 ? (foodActual / salesActual) * 100 : 0;
+      const drinkPct =
+        salesActual !== 0 ? (drinkActual / salesActual) * 100 : 0;
+
+      // vs Budget
+      const salesVar = salesActual - salesBudget;
+      const salesVarPct = salesBudget !== 0 ? (salesVar / salesBudget) * 100 : 0;
+
+      // ✅ NEW: vs Forecast
+      const salesFcVar = salesActual - salesForecast;
+      const salesFcVarPct =
+        salesForecast !== 0 ? (salesFcVar / salesForecast) * 100 : 0;
+
+      weekRows.push({
+        location: loc,
+        week: match.Week,
+
+        // ✅ expose values for the table
+        Sales_Actual: salesActual,
+        Sales_Budget: salesBudget,
+        Sales_Forecast: salesForecast,
+
+        // % KPIs
+        payrollPct,
+        foodPct,
+        drinkPct,
+
+        // £ + % variances
+        salesVar,
+        salesVarPct,
+
+        // ✅ NEW variance
+        salesFcVar,
+        salesFcVarPct,
+
+        // Costs (£)
+        payrollValue: payrollActual,
+        foodValue: foodActual,
+        drinkValue: drinkActual,
+      });
     }
 
-    // ---- WEEK RANKING ----
-    if (selectedRankingWeek) {
-      const weekRows: any[] = [];
+    weekRows.sort((a, b) => b.payrollPct - a.payrollPct);
+    setRankingWeekData(weekRows);
+  } else {
+    setRankingWeekData([]);
+  }
 
-      for (const { loc, rows } of rankingSource) {
-        const match = rows.find(
-          (r: any) =>
-            String(r.Week || '').trim() === selectedRankingWeek &&
-            rowHasData(r),
-        );
-        if (!match) continue;
+  // ---- PERIOD RANKING ----
+  if (selectedRankingPeriod) {
+    const periodRows: any[] = [];
+    const yearNum = Number(year) || new Date().getFullYear();
 
-        const salesActual = match.Sales_Actual || 0; // Column B ✅
-        const salesBudget = match.Sales_Budget || 0;
-        const payrollActual = match.Payroll_Actual || 0;
-        const foodActual = match.Food_Actual || 0;
-        const drinkActual = match.Drink_Actual || 0;
+    // Get all weeks belonging to this period for the selected year
+    const periodWeeks = getWeeksForPeriod(selectedRankingPeriod, yearNum);
 
-        const payrollPct =
-          salesActual !== 0 ? (payrollActual / salesActual) * 100 : 0;
-        const foodPct =
-          salesActual !== 0 ? (foodActual / salesActual) * 100 : 0;
-        const drinkPct =
-          salesActual !== 0 ? (drinkActual / salesActual) * 100 : 0;
+    for (const { loc, rows } of rankingSource) {
+      const filtered = rows.filter(
+        (r: any) =>
+          periodWeeks.includes(String(r.Week || "").trim()) &&
+          rowHasData(r),
+      );
+      if (!filtered.length) continue;
 
-        const salesVar = salesActual - salesBudget;
-        const salesVarPct =
-          salesBudget !== 0 ? (salesVar / salesBudget) * 100 : 0;
+      let salesActualTotal = 0;
+      let salesBudgetTotal = 0;
+      let salesForecastTotal = 0; // ✅ NEW
 
-        weekRows.push({
-          location: loc,
-          week: match.Week,
+      let payrollActualTotal = 0;
+      let foodActualTotal = 0;
+      let drinkActualTotal = 0;
 
-          // ✅ Include actual/budget so RankingTable can show Sales column
-          Sales_Actual: salesActual,
-          Sales_Budget: salesBudget,
+      for (const r of filtered) {
+        salesActualTotal += r.Sales_Actual || 0;
+        salesBudgetTotal += r.Sales_Budget || 0;
+        salesForecastTotal += r.Sales_Forecast || 0; // ✅ NEW
 
-          payrollPct,
-          foodPct,
-          drinkPct,
-          salesVar,
-          salesVarPct,
-          payrollValue: payrollActual,
-          foodValue: foodActual,
-          drinkValue: drinkActual,
-        });
+        payrollActualTotal += r.Payroll_Actual || 0;
+        foodActualTotal += r.Food_Actual || 0;
+        drinkActualTotal += r.Drink_Actual || 0;
       }
 
-      weekRows.sort((a, b) => b.payrollPct - a.payrollPct);
-      setRankingWeekData(weekRows);
-    } else {
-      setRankingWeekData([]);
+      const payrollPct =
+        salesActualTotal !== 0
+          ? (payrollActualTotal / salesActualTotal) * 100
+          : 0;
+      const foodPct =
+        salesActualTotal !== 0 ? (foodActualTotal / salesActualTotal) * 100 : 0;
+      const drinkPct =
+        salesActualTotal !== 0
+          ? (drinkActualTotal / salesActualTotal) * 100
+          : 0;
+
+      // vs Budget
+      const salesVar = salesActualTotal - salesBudgetTotal;
+      const salesVarPct =
+        salesBudgetTotal !== 0 ? (salesVar / salesBudgetTotal) * 100 : 0;
+
+      // ✅ NEW: vs Forecast
+      const salesFcVar = salesActualTotal - salesForecastTotal;
+      const salesFcVarPct =
+        salesForecastTotal !== 0
+          ? (salesFcVar / salesForecastTotal) * 100
+          : 0;
+
+      periodRows.push({
+        location: loc,
+        week: selectedRankingPeriod,
+
+        // ✅ expose values for the table
+        Sales_Actual: salesActualTotal,
+        Sales_Budget: salesBudgetTotal,
+        Sales_Forecast: salesForecastTotal,
+
+        payrollPct,
+        foodPct,
+        drinkPct,
+
+        salesVar,
+        salesVarPct,
+
+        // ✅ NEW variance
+        salesFcVar,
+        salesFcVarPct,
+
+        payrollValue: payrollActualTotal,
+        foodValue: foodActualTotal,
+        drinkValue: drinkActualTotal,
+      });
     }
 
-    // ---- PERIOD RANKING ----
-    if (selectedRankingPeriod) {
-      const periodRows: any[] = [];
-      const yearNum = Number(year) || new Date().getFullYear();
+    periodRows.sort((a, b) => b.payrollPct - a.payrollPct);
+    setRankingPeriodData(periodRows);
+  } else {
+    setRankingPeriodData([]);
+  }
+}, [rankingSource, selectedRankingWeek, selectedRankingPeriod, year]);
 
-      // Get all weeks belonging to this period for the selected year
-      const periodWeeks = getWeeksForPeriod(selectedRankingPeriod, yearNum);
-
-      for (const { loc, rows } of rankingSource) {
-        const filtered = rows.filter(
-          (r: any) =>
-            periodWeeks.includes(String(r.Week || '').trim()) &&
-            rowHasData(r),
-        );
-        if (!filtered.length) continue;
-
-        let salesActualTotal = 0;
-        let salesBudgetTotal = 0;
-        let payrollActualTotal = 0;
-        let foodActualTotal = 0;
-        let drinkActualTotal = 0;
-
-        for (const r of filtered) {
-          salesActualTotal += r.Sales_Actual || 0; // Column B ✅
-          salesBudgetTotal += r.Sales_Budget || 0;
-          payrollActualTotal += r.Payroll_Actual || 0;
-          foodActualTotal += r.Food_Actual || 0;
-          drinkActualTotal += r.Drink_Actual || 0;
-        }
-
-        const payrollPct =
-          salesActualTotal !== 0
-            ? (payrollActualTotal / salesActualTotal) * 100
-            : 0;
-        const foodPct =
-          salesActualTotal !== 0
-            ? (foodActualTotal / salesActualTotal) * 100
-            : 0;
-        const drinkPct =
-          salesActualTotal !== 0
-            ? (drinkActualTotal / salesActualTotal) * 100
-            : 0;
-
-        const salesVar = salesActualTotal - salesBudgetTotal;
-        const salesVarPct =
-          salesBudgetTotal !== 0 ? (salesVar / salesBudgetTotal) * 100 : 0;
-
-        periodRows.push({
-          location: loc,
-          week: selectedRankingPeriod,
-
-          // ✅ Include actual/budget so RankingTable can show Sales column
-          Sales_Actual: salesActualTotal,
-          Sales_Budget: salesBudgetTotal,
-
-          payrollPct,
-          foodPct,
-          drinkPct,
-          salesVar,
-          salesVarPct,
-          payrollValue: payrollActualTotal,
-          foodValue: foodActualTotal,
-          drinkValue: drinkActualTotal,
-        });
-      }
-
-      periodRows.sort((a, b) => b.payrollPct - a.payrollPct);
-      setRankingPeriodData(periodRows);
-    } else {
-      setRankingPeriodData([]);
-    }
-  }, [rankingSource, selectedRankingWeek, selectedRankingPeriod, year]);
 
   // 10) Chart config (preserves Theo lines)
   const chartConfig = {
