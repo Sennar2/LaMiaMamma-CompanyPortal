@@ -228,7 +228,7 @@ const API_KEY =
   "AIzaSyB_dkFpvk6w_d9dPD_mWVhfB8-lly-9FS8";
 const SPREADSHEET_ID =
   process.env.NEXT_PUBLIC_SHEET_ID ||
-  "1PPVSEcZ6qLOEK2Z0uRLgXCnS_maazWFO_yMY648Oq1g";
+  "1VRla3bQRJENs5meWdWd2i5UH94FMpPoKLYrMNZCVm9M";
 
 const BRAND_GROUPS: Record<string, string[]> = {
   "La Mia Mamma (Brand)": [
@@ -803,7 +803,7 @@ const [nextPayrollError, setNextPayrollError] = useState<string | null>(null);
    /*PayDay Funciton*/
 useEffect(() => {
   const PAYROLL_CSV_URL =
-    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQc6Ug8ESK-1bHrGCpJhzA5yLjuEz1lukbbFItcm8WkXFXmeUDXkxPN4hB17ZubV4CUrCk_EyTYx2Yq/pub?output=csv";
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vRaO7nFGkJCkKD78MxrQ_gRtd7i3WXqg84TTfdEWyMhgRMk18HaSK99T6YZpWbAEEG2gU3kISx5FyN2/pub?output=csv";
 
   async function loadPayroll() {
     setNextPayrollLoading(true);
